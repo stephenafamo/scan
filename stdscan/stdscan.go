@@ -20,6 +20,15 @@ func All[T any](ctx context.Context, exec Queryer, m scan.Mapper[T], sql string,
 	return scan.All(ctx, convert(exec), m, sql, args...)
 }
 
+// Collect multiple slices of values from a single query
+// collector must be of the structure
+// func(cols) func(*Values) (t1, t2, ..., error)
+// The returned slice contains values like this
+// {[]t1, []t2}
+func Collect(ctx context.Context, exec Queryer, collector func(cols map[string]int) any, sql string, args ...any) ([]any, error) {
+	return scan.Collect(ctx, convert(exec), collector, sql, args...)
+}
+
 // A Queryer that returns the concrete type *sql.Rows
 type Queryer interface {
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
