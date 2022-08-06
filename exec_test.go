@@ -115,7 +115,7 @@ func TestSingleValue(t *testing.T) {
 		columns:   strstr{{"id", "int64"}},
 		rows:      singleRows(1, 2, 3, 5, 8, 13, 21),
 		query:     []string{"id"},
-		mapper:    SingleValueMapper[int],
+		mapper:    SingleColumnMapper[int],
 		expectOne: 1,
 		expectAll: []int{1, 2, 3, 5, 8, 13, 21},
 	})
@@ -124,7 +124,7 @@ func TestSingleValue(t *testing.T) {
 		columns:   strstr{{"name", "string"}},
 		rows:      singleRows("first", "second", "third"),
 		query:     []string{"name"},
-		mapper:    SingleValueMapper[string],
+		mapper:    SingleColumnMapper[string],
 		expectOne: "first",
 		expectAll: []string{"first", "second", "third"},
 	})
@@ -136,7 +136,7 @@ func TestSingleValue(t *testing.T) {
 		columns:   strstr{{"when", "datetime"}},
 		rows:      singleRows(time1, time2, time3),
 		query:     []string{"when"},
-		mapper:    SingleValueMapper[time.Time],
+		mapper:    SingleColumnMapper[time.Time],
 		expectOne: time1,
 		expectAll: []time.Time{time1, time2, time3},
 	})

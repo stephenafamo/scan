@@ -109,8 +109,9 @@ func (m *MappingError) Equal(err error) bool {
 	return true
 }
 
-// To map to a single value. For queries that return only one column
-func SingleValueMapper[T any](c cols) func(*Values) (T, error) {
+// For queries that return only one column
+// throws an error if there is more than one column
+func SingleColumnMapper[T any](c cols) func(*Values) (T, error) {
 	if len(c) != 1 {
 		err := fmt.Errorf("Expected 1 column but got %d columns", len(c))
 		return errorMapper[T](err, "wrong column count", "1", strconv.Itoa(len(c)))
@@ -124,6 +125,15 @@ func SingleValueMapper[T any](c cols) func(*Values) (T, error) {
 
 	return func(v *Values) (T, error) {
 		return Value[T](v, colName), nil
+	}
+}
+
+// Map a column by name.
+func ColumnMapper[T any](name string) func(c cols) func(*Values) (T, error) {
+	return func(c cols) func(v *Values) (T, error) {
+		return func(v *Values) (T, error) {
+			return Value[T](v, name), nil
+		}
 	}
 }
 

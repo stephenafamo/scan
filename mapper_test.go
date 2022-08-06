@@ -62,13 +62,33 @@ func RunMapperTest[T any](t *testing.T, name string, tc MapperTest[T]) {
 	})
 }
 
-func TestSingleValueMapper(t *testing.T) {
+func TestColumnMapper(t *testing.T) {
+	RunMapperTest(t, "single column", MapperTest[int]{
+		Values: &Values{
+			columns: columns(1),
+			scanned: []any{100},
+		},
+		Mapper:      ColumnMapper[int]("0"),
+		ExpectedVal: 100,
+	})
+
+	RunMapperTest(t, "multiple columns", MapperTest[int]{
+		Values: &Values{
+			columns: columns(3),
+			scanned: []any{100, 200, 300},
+		},
+		Mapper:      ColumnMapper[int]("1"),
+		ExpectedVal: 200,
+	})
+}
+
+func TestSingleColumnMapper(t *testing.T) {
 	RunMapperTest(t, "multiple columns", MapperTest[int]{
 		Values: &Values{
 			columns: columns(2),
 			scanned: []any{100},
 		},
-		Mapper:        SingleValueMapper[int],
+		Mapper:        SingleColumnMapper[int],
 		ExpectedError: createError(nil, "wrong column count", "1", "2"),
 	})
 
@@ -77,7 +97,7 @@ func TestSingleValueMapper(t *testing.T) {
 			columns: columns(1),
 			scanned: []any{100},
 		},
-		Mapper:      SingleValueMapper[int],
+		Mapper:      SingleColumnMapper[int],
 		ExpectedVal: 100,
 	})
 
@@ -86,7 +106,7 @@ func TestSingleValueMapper(t *testing.T) {
 			columns: columns(1),
 			scanned: []any{int64(100)},
 		},
-		Mapper:      SingleValueMapper[int64],
+		Mapper:      SingleColumnMapper[int64],
 		ExpectedVal: 100,
 	})
 
@@ -95,7 +115,7 @@ func TestSingleValueMapper(t *testing.T) {
 			columns: columns(1),
 			scanned: []any{"A fancy string"},
 		},
-		Mapper:      SingleValueMapper[string],
+		Mapper:      SingleColumnMapper[string],
 		ExpectedVal: "A fancy string",
 	})
 
@@ -104,7 +124,7 @@ func TestSingleValueMapper(t *testing.T) {
 			columns: columns(1),
 			scanned: []any{now},
 		},
-		Mapper:      SingleValueMapper[time.Time],
+		Mapper:      SingleColumnMapper[time.Time],
 		ExpectedVal: now,
 	})
 }
