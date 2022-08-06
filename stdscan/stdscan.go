@@ -29,7 +29,7 @@ func Collect(ctx context.Context, exec Queryer, collector func(cols map[string]i
 	return scan.Collect(ctx, convert(exec), collector, sql, args...)
 }
 
-// A Queryer that returns the concrete type *sql.Rows
+// A Queryer that returns the concrete type [*sql.Rows]
 type Queryer interface {
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 }
