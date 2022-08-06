@@ -2,6 +2,8 @@ package scan
 
 import (
 	"context"
+	"errors"
+	"reflect"
 )
 
 // One scans a single row from the query and maps it to T using a [Queryer]
@@ -80,4 +82,90 @@ func All[T any](ctx context.Context, exec Queryer, m Mapper[T], sql string, args
 	}
 
 	return results, rows.Err()
+}
+
+var (
+	ErrBadCollectorReturn   = errors.New("collector does not return a function")
+	ErrBadCollectFuncInput  = errors.New("collect func must only take *Values as input")
+	ErrBadCollectFuncOutput = errors.New("collect func must return at least 2 values with the last being an error")
+)
+
+// Collect multiple slices of values from a single query
+// collector must be of the structure
+// func(cols) func(*Values) (t1, t2, ..., error)
+// The returned slice contains values like this
+// {[]t1, []t2}
+func Collect(ctx context.Context, exec Queryer, collector func(cols) any, sql string, args ...any) ([]any, error) {
+	rows, err := exec.QueryContext(ctx, sql, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	v, err := newValues(rows)
+	if err != nil {
+		return nil, err
+	}
+	vref := reflect.ValueOf(v)
+
+	genFunc := reflect.ValueOf(collector(v.columnsCopy()))
+
+	if genFunc.Kind() != reflect.Func {
+		return nil, ErrBadCollectorReturn
+	}
+
+	genFuncTyp := genFunc.Type()
+	if genFuncTyp.NumIn() != 1 || genFuncTyp.In(0) != vref.Type() {
+		return nil, ErrBadCollectFuncInput
+	}
+
+	nOut := genFuncTyp.NumOut()
+	if nOut < 2 || genFuncTyp.Out(nOut-1) != reflect.TypeOf((*error)(nil)).Elem() {
+		return nil, ErrBadCollectFuncOutput
+	}
+
+	resultTyp := make([]reflect.Type, nOut-1)
+	results := make([]reflect.Value, nOut-1)
+	for i := 0; i < nOut-1; i++ {
+		sliceTyp := reflect.SliceOf(genFuncTyp.Out(i))
+		resultTyp[i] = sliceTyp
+		results[i] = reflect.New(sliceTyp).Elem()
+	}
+
+	// Record the mapping
+	v.recording = true
+	out := genFunc.Call([]reflect.Value{vref})
+	errI := out[len(out)-1].Interface() // if it is just nil, it may panic
+	if err != nil {
+		return nil, errI.(error)
+	}
+	v.recording = false
+
+	for rows.Next() {
+		err = v.scanRow(rows)
+		if err != nil {
+			return nil, err
+		}
+
+		out := genFunc.Call([]reflect.Value{vref})
+		errI = out[len(out)-1].Interface()
+		if err != nil {
+			return nil, errI.(error)
+		}
+
+		for i := 0; i < nOut-1; i++ {
+			results[i] = reflect.Append(results[i], out[i])
+		}
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	resp := make([]any, len(results))
+	for i, v := range results {
+		resp[i] = v.Interface()
+	}
+
+	return resp, nil
 }

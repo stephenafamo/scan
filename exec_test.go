@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	_ "github.com/stephenafamo/fakedb"
 )
 
@@ -179,6 +180,83 @@ func TestStruct(t *testing.T) {
 			{User: user1, Timestamps: timestamp1},
 			{User: user2, Timestamps: timestamp2},
 		},
+	})
+}
+
+func TestCollect(t *testing.T) {
+	testCollect(t, "bad return", collectCase{
+		columns:     strstr{{"id", "int64"}, {"name", "string"}},
+		rows:        rows{[]any{1, "foo"}, []any{2, "bar"}},
+		query:       []string{"id", "name"},
+		generator:   func(c cols) any { return 100 },
+		expectedErr: ErrBadCollectorReturn,
+	})
+
+	testCollect(t, "bad input", collectCase{
+		columns: strstr{{"id", "int64"}, {"name", "string"}},
+		rows:    rows{[]any{1, "foo"}, []any{2, "bar"}},
+		query:   []string{"id", "name"},
+		generator: func(c cols) any {
+			return func(v Values) (int, string, error) {
+				return 0, "", nil
+			}
+		},
+		expectedErr: ErrBadCollectFuncInput,
+	})
+
+	testCollect(t, "bad output", collectCase{
+		columns: strstr{{"id", "int64"}, {"name", "string"}},
+		rows:    rows{[]any{1, "foo"}, []any{2, "bar"}},
+		query:   []string{"id", "name"},
+		generator: func(c cols) any {
+			return func(v *Values) error {
+				return nil
+			}
+		},
+		expectedErr: ErrBadCollectFuncOutput,
+	})
+
+	testCollect(t, "good", collectCase{
+		columns: strstr{{"id", "int64"}, {"name", "string"}},
+		rows:    rows{[]any{1, "foo"}, []any{2, "bar"}},
+		query:   []string{"id", "name"},
+		generator: func(c cols) any {
+			return func(v *Values) (int, string, error) {
+				return Value[int](v, "id"), Value[string](v, "name"), nil
+			}
+		},
+		expect: []any{[]int{1, 2}, []string{"foo", "bar"}},
+	})
+}
+
+type collectCase struct {
+	columns     strstr
+	rows        rows
+	query       []string // columns to select
+	generator   func(cols) any
+	expect      []any
+	expectedErr error
+}
+
+func testCollect(t *testing.T, name string, tc collectCase) {
+	t.Helper()
+	ctx := context.Background()
+
+	t.Run(name, func(t *testing.T) {
+		ex := createDB(t, tc.columns)
+		insert(t, ex, colSliceFromMap(tc.columns), tc.rows...)
+		query := createQuery(t, tc.query)
+
+		queryer := stdQ{ex}
+
+		collected, err := Collect(ctx, queryer, tc.generator, query)
+		if diff := cmp.Diff(tc.expectedErr, err, cmpopts.EquateErrors()); diff != "" {
+			t.Fatalf("diff: %s", diff)
+		}
+
+		if diff := cmp.Diff(tc.expect, collected); diff != "" {
+			t.Fatalf("diff: %s", diff)
+		}
 	})
 }
 
