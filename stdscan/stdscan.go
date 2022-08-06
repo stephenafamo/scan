@@ -20,6 +20,11 @@ func All[T any](ctx context.Context, exec Queryer, m scan.Mapper[T], sql string,
 	return scan.All(ctx, convert(exec), m, sql, args...)
 }
 
+// Cursor returns a cursor that works similar to *sql.Rows
+func Cursor[T any](ctx context.Context, exec Queryer, m scan.Mapper[T], sql string, args ...any) (scan.ICursor[T], error) {
+	return scan.Cursor(ctx, convert(exec), m, sql, args...)
+}
+
 // Collect multiple slices of values from a single query
 // collector must be of the structure
 // func(cols) func(*Values) (t1, t2, ..., error)

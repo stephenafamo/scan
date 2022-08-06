@@ -107,6 +107,31 @@ func testQuery[T any](t *testing.T, name string, tc queryCase[T]) {
 				t.Fatalf("diff: %s", diff)
 			}
 		})
+
+		t.Run("cursor", func(t *testing.T) {
+			c, err := Cursor(ctx, queryer, tc.mapper, query)
+			if diff := cmp.Diff(tc.expectedErr, err); diff != "" {
+				t.Fatalf("diff: %s", diff)
+			}
+
+			var i int
+			for c.Next() {
+				v, err := c.Get()
+				if diff := cmp.Diff(tc.expectedErr, err); diff != "" {
+					t.Fatalf("diff: %s", diff)
+				}
+
+				if diff := cmp.Diff(tc.expectAll[i], v); diff != "" {
+					t.Fatalf("diff: %s", diff)
+				}
+
+				i++
+			}
+
+			if i != len(tc.expectAll) {
+				t.Fatalf("Should have %d rows, but cursor only scanned %d", len(tc.expectAll), i)
+			}
+		})
 	})
 }
 

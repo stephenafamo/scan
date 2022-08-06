@@ -84,6 +84,34 @@ func All[T any](ctx context.Context, exec Queryer, m Mapper[T], sql string, args
 	return results, rows.Err()
 }
 
+// Cursor returns a cursor that works similar to *sql.Rows
+func Cursor[T any](ctx context.Context, exec Queryer, m Mapper[T], sql string, args ...any) (ICursor[T], error) {
+	rows, err := exec.QueryContext(ctx, sql, args...)
+	if err != nil {
+		return nil, err
+	}
+
+	v, err := newValues(rows)
+	if err != nil {
+		return nil, err
+	}
+
+	genFunc := m(v.columnsCopy())
+
+	// Record the mapping
+	v.recording = true
+	if _, err = genFunc(v); err != nil {
+		return nil, err
+	}
+	v.recording = false
+
+	return &cursor[T]{
+		r: rows,
+		v: v,
+		f: genFunc,
+	}, nil
+}
+
 var (
 	ErrBadCollectorReturn   = errors.New("collector does not return a function")
 	ErrBadCollectFuncInput  = errors.New("collect func must only take *Values as input")
