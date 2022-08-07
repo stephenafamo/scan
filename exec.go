@@ -21,7 +21,7 @@ func One[T any](ctx context.Context, exec Queryer, m Mapper[T], sql string, args
 		return t, err
 	}
 
-	genFunc := m(v.columnsCopy())
+	genFunc := m(ctx, v.columnsCopy())
 
 	// Record the mapping
 	v.recording = true
@@ -58,7 +58,7 @@ func All[T any](ctx context.Context, exec Queryer, m Mapper[T], sql string, args
 		return nil, err
 	}
 
-	genFunc := m(v.columnsCopy())
+	genFunc := m(ctx, v.columnsCopy())
 
 	// Record the mapping
 	v.recording = true
@@ -96,7 +96,7 @@ func Cursor[T any](ctx context.Context, exec Queryer, m Mapper[T], sql string, a
 		return nil, err
 	}
 
-	genFunc := m(v.columnsCopy())
+	genFunc := m(ctx, v.columnsCopy())
 
 	// Record the mapping
 	v.recording = true
@@ -120,10 +120,10 @@ var (
 
 // Collect multiple slices of values from a single query
 // collector must be of the structure
-// func(cols) func(*Values) (t1, t2, ..., error)
+// func(context.Context, map[string]int) func(*Values) (t1, t2, ..., error)
 // The returned slice contains values like this
 // {[]t1, []t2}
-func Collect(ctx context.Context, exec Queryer, collector func(cols) any, sql string, args ...any) ([]any, error) {
+func Collect(ctx context.Context, exec Queryer, collector func(context.Context, cols) any, sql string, args ...any) ([]any, error) {
 	rows, err := exec.QueryContext(ctx, sql, args...)
 	if err != nil {
 		return nil, err
@@ -136,7 +136,7 @@ func Collect(ctx context.Context, exec Queryer, collector func(cols) any, sql st
 	}
 	vref := reflect.ValueOf(v)
 
-	genFunc := reflect.ValueOf(collector(v.columnsCopy()))
+	genFunc := reflect.ValueOf(collector(ctx, v.columnsCopy()))
 
 	if genFunc.Kind() != reflect.Func {
 		return nil, ErrBadCollectorReturn

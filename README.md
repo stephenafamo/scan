@@ -45,7 +45,7 @@ func main() {
     idsAndEmail, _ := stdscan.Collect(ctx, db, collectIDandEmail, `SELECT id, email FROM users`)
 }
 
-func collectIDandEmail(c cols) any {
+func collectIDandEmail(_ context.Context, c cols) any {
     return func(v *Values) (int, string, error) {
         return Value[int](v, "id"), Value[string](v, "email"), nil
     }

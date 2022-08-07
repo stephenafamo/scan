@@ -1,6 +1,7 @@
 package scan
 
 import (
+	"context"
 	"database/sql"
 	"reflect"
 	"strconv"
@@ -50,7 +51,7 @@ func RunMapperTests[T any](t *testing.T, cases MapperTests[T]) {
 func RunMapperTest[T any](t *testing.T, name string, tc MapperTest[T]) {
 	t.Helper()
 	t.Run(name, func(t *testing.T) {
-		m := tc.Mapper(tc.Values.columnsCopy())
+		m := tc.Mapper(context.Background(), tc.Values.columnsCopy())
 
 		val, err := m(tc.Values)
 		if diff := cmp.Diff(tc.ExpectedError, err); diff != "" {
@@ -326,7 +327,7 @@ func testMappable[T any](t *testing.T, expected bool) {
 			t.Fatalf("Expected mappable(%T) to be %t but was %t", x, expected, gotten)
 		}
 		if gotten {
-			f(nil)
+			f(nil, nil)
 		}
 	})
 }

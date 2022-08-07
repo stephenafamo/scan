@@ -1,6 +1,7 @@
 package scan
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"reflect"
@@ -12,27 +13,28 @@ var (
 	colsTyp = reflect.TypeOf(cols{})
 	valsTyp = reflect.TypeOf(&Values{})
 	errTyp  = reflect.TypeOf((*error)(nil)).Elem()
+	ctxTyp  = reflect.TypeOf((*context.Context)(nil)).Elem()
 )
 
 // Uses reflection to create a mapping function for a struct type
 // using the default options
-func StructMapper[T any](c cols) func(*Values) (T, error) {
-	return structMapperFrom[T](defaultStructMapper, c)
+func StructMapper[T any](ctx context.Context, c cols) func(*Values) (T, error) {
+	return structMapperFrom[T](ctx, c, defaultStructMapper)
 }
 
 // Uses reflection to create a mapping function for a struct type
 // using with custom options
-func CustomStructMapper[T any](opts ...MappingOption) func(c cols) func(*Values) (T, error) {
-	return func(c cols) func(*Values) (T, error) {
+func CustomStructMapper[T any](opts ...MappingOption) func(context.Context, cols) func(*Values) (T, error) {
+	return func(ctx context.Context, c cols) func(*Values) (T, error) {
 		mapper, err := newStructMapper(opts...)
 		if err != nil {
 			return errorMapper[T](err)
 		}
-		return structMapperFrom[T](*mapper, c)
+		return structMapperFrom[T](ctx, c, *mapper)
 	}
 }
 
-func structMapperFrom[T any](s structMapper, c cols) func(*Values) (T, error) {
+func structMapperFrom[T any](ctx context.Context, c cols, s structMapper) func(*Values) (T, error) {
 	var x T
 	typ := reflect.TypeOf(x)
 
@@ -42,7 +44,7 @@ func structMapperFrom[T any](s structMapper, c cols) func(*Values) (T, error) {
 	}
 
 	if m, ok := mappable[T](typ, isPointer); ok {
-		return m(c)
+		return m(ctx, c)
 	}
 
 	mapping, err := s.getMapping(typ, isPointer)
@@ -76,7 +78,7 @@ func checks(typ reflect.Type) (bool, error) {
 	return isPointer, nil
 }
 
-func mappable[T any](typ reflect.Type, isPointer bool) (func(cols) func(*Values) (T, error), bool) {
+func mappable[T any](typ reflect.Type, isPointer bool) (func(context.Context, cols) func(*Values) (T, error), bool) {
 	var t, pt reflect.Type
 	if isPointer {
 		t = typ.Elem()
@@ -102,11 +104,11 @@ func mappable[T any](typ reflect.Type, isPointer bool) (func(cols) func(*Values)
 
 	switch methodTyp.Type {
 	// func (*Typ) MapValues(cols) func(*Values) (T, error)
-	case reflect.FuncOf([]reflect.Type{pt, colsTyp}, []reflect.Type{VFunc}, false):
+	case reflect.FuncOf([]reflect.Type{pt, ctxTyp, colsTyp}, []reflect.Type{VFunc}, false):
 		pointerResp = false
 
 	// func (*Typ) MapValues(cols) func(*Values) (*T, error)
-	case reflect.FuncOf([]reflect.Type{pt, colsTyp}, []reflect.Type{PVFunc}, false):
+	case reflect.FuncOf([]reflect.Type{pt, ctxTyp, colsTyp}, []reflect.Type{PVFunc}, false):
 		pointerResp = true
 
 	default:
@@ -118,16 +120,16 @@ func mappable[T any](typ reflect.Type, isPointer bool) (func(cols) func(*Values)
 
 	// same return type... easy
 	if isPointer == pointerResp {
-		return func(c cols) func(*Values) (T, error) {
+		return func(ctx context.Context, c cols) func(*Values) (T, error) {
 			return method.Call(
-				[]reflect.Value{reflect.ValueOf(c)},
+				[]reflect.Value{reflect.ValueOf(ctx), reflect.ValueOf(c)},
 			)[0].Interface().(func(*Values) (T, error))
 		}, true
 	}
 
-	return func(c cols) func(*Values) (T, error) {
+	return func(ctx context.Context, c cols) func(*Values) (T, error) {
 		f := method.Call(
-			[]reflect.Value{reflect.ValueOf(c)},
+			[]reflect.Value{reflect.ValueOf(ctx), reflect.ValueOf(c)},
 		)[0]
 
 		return func(v *Values) (T, error) {

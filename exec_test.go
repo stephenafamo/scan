@@ -213,7 +213,7 @@ func TestCollect(t *testing.T) {
 		columns:     strstr{{"id", "int64"}, {"name", "string"}},
 		rows:        rows{[]any{1, "foo"}, []any{2, "bar"}},
 		query:       []string{"id", "name"},
-		generator:   func(c cols) any { return 100 },
+		generator:   func(_ context.Context, c cols) any { return 100 },
 		expectedErr: ErrBadCollectorReturn,
 	})
 
@@ -221,7 +221,7 @@ func TestCollect(t *testing.T) {
 		columns: strstr{{"id", "int64"}, {"name", "string"}},
 		rows:    rows{[]any{1, "foo"}, []any{2, "bar"}},
 		query:   []string{"id", "name"},
-		generator: func(c cols) any {
+		generator: func(_ context.Context, c cols) any {
 			return func(v Values) (int, string, error) {
 				return 0, "", nil
 			}
@@ -233,7 +233,7 @@ func TestCollect(t *testing.T) {
 		columns: strstr{{"id", "int64"}, {"name", "string"}},
 		rows:    rows{[]any{1, "foo"}, []any{2, "bar"}},
 		query:   []string{"id", "name"},
-		generator: func(c cols) any {
+		generator: func(_ context.Context, c cols) any {
 			return func(v *Values) error {
 				return nil
 			}
@@ -245,7 +245,7 @@ func TestCollect(t *testing.T) {
 		columns: strstr{{"id", "int64"}, {"name", "string"}},
 		rows:    rows{[]any{1, "foo"}, []any{2, "bar"}},
 		query:   []string{"id", "name"},
-		generator: func(c cols) any {
+		generator: func(_ context.Context, c cols) any {
 			return func(v *Values) (int, string, error) {
 				return Value[int](v, "id"), Value[string](v, "name"), nil
 			}
@@ -257,8 +257,8 @@ func TestCollect(t *testing.T) {
 		columns: strstr{{"id", "int64"}, {"name", "string"}},
 		rows:    rows{[]any{1, "foo"}, []any{2, "bar"}},
 		query:   []string{"id", "name"},
-		generator: func(c cols) any {
-			sm := StructMapper[User](c)
+		generator: func(ctx context.Context, c cols) any {
+			sm := StructMapper[User](ctx, c)
 			return func(v *Values) (int, User, error) {
 				user, err := sm(v)
 				return Value[int](v, "id"), user, err
@@ -275,7 +275,7 @@ type collectCase struct {
 	columns     strstr
 	rows        rows
 	query       []string // columns to select
-	generator   func(cols) any
+	generator   func(context.Context, cols) any
 	expect      []any
 	expectedErr error
 }

@@ -1,6 +1,7 @@
 package scan
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"reflect"
@@ -42,13 +43,13 @@ type mapinfo struct {
 // record the expected types
 // For each row, the DB values are then scanned into Values before
 // calling the returned function.
-type Mapper[T any] func(cols) func(*Values) (T, error)
+type Mapper[T any] func(context.Context, cols) func(*Values) (T, error)
 
 // Mappable is an interface of a type that can map its own values
 // if a struct implement IMapper, using [StructMapper] to map its values
 // will use the MapValues method instead
 type Mappable[T any] interface {
-	MapValues(cols) func(*Values) (T, error)
+	MapValues(cols) func(context.Context, *Values) (T, error)
 }
 
 // The generator function does not return an error itself to make it less cumbersome
@@ -111,7 +112,7 @@ func (m *MappingError) Equal(err error) bool {
 
 // For queries that return only one column
 // throws an error if there is more than one column
-func SingleColumnMapper[T any](c cols) func(*Values) (T, error) {
+func SingleColumnMapper[T any](ctx context.Context, c cols) func(*Values) (T, error) {
 	if len(c) != 1 {
 		err := fmt.Errorf("Expected 1 column but got %d columns", len(c))
 		return errorMapper[T](err, "wrong column count", "1", strconv.Itoa(len(c)))
@@ -129,8 +130,8 @@ func SingleColumnMapper[T any](c cols) func(*Values) (T, error) {
 }
 
 // Map a column by name.
-func ColumnMapper[T any](name string) func(c cols) func(*Values) (T, error) {
-	return func(c cols) func(v *Values) (T, error) {
+func ColumnMapper[T any](name string) func(context.Context, cols) func(*Values) (T, error) {
+	return func(ctx context.Context, c cols) func(v *Values) (T, error) {
 		return func(v *Values) (T, error) {
 			return Value[T](v, name), nil
 		}
@@ -138,7 +139,7 @@ func ColumnMapper[T any](name string) func(c cols) func(*Values) (T, error) {
 }
 
 // Maps each row into []any in the order
-func SliceMapper[T any](c cols) func(*Values) ([]T, error) {
+func SliceMapper[T any](ctx context.Context, c cols) func(*Values) ([]T, error) {
 	return func(v *Values) ([]T, error) {
 		row := make([]T, len(c))
 
@@ -152,7 +153,7 @@ func SliceMapper[T any](c cols) func(*Values) ([]T, error) {
 
 // Maps all rows into map[string]T
 // Most likely used with interface{} to get a map[string]interface{}
-func MapMapper[T any](c cols) func(*Values) (map[string]T, error) {
+func MapMapper[T any](ctx context.Context, c cols) func(*Values) (map[string]T, error) {
 	return func(v *Values) (map[string]T, error) {
 		row := make(map[string]T, len(c))
 
