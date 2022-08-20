@@ -103,11 +103,11 @@ func mappable[T any](typ reflect.Type, isPointer bool) (func(context.Context, co
 	PVFunc := reflect.FuncOf([]reflect.Type{valsTyp}, []reflect.Type{pt, errTyp}, false)
 
 	switch methodTyp.Type {
-	// func (*Typ) MapValues(cols) func(*Values) (T, error)
+	// func (*Typ) MapValues(ctx, cols) func(*Values) (T, error)
 	case reflect.FuncOf([]reflect.Type{pt, ctxTyp, colsTyp}, []reflect.Type{VFunc}, false):
 		pointerResp = false
 
-	// func (*Typ) MapValues(cols) func(*Values) (*T, error)
+	// func (*Typ) MapValues(ctx, cols) func(*Values) (*T, error)
 	case reflect.FuncOf([]reflect.Type{pt, ctxTyp, colsTyp}, []reflect.Type{PVFunc}, false):
 		pointerResp = true
 

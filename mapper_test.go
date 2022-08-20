@@ -327,7 +327,7 @@ func testMappable[T any](t *testing.T, expected bool) {
 			t.Fatalf("Expected mappable(%T) to be %t but was %t", x, expected, gotten)
 		}
 		if gotten {
-			f(nil, nil)
+			f(context.Background(), nil)
 		}
 	})
 }
@@ -365,7 +365,7 @@ type UserWithMapper struct {
 	Name string
 }
 
-func (UserWithMapper) MapValues(cols) func(*Values) (UserWithMapper, error) {
+func (UserWithMapper) MapValues(context.Context, cols) func(*Values) (UserWithMapper, error) {
 	return func(v *Values) (UserWithMapper, error) {
 		return UserWithMapper{
 			ID:   Value[int](v, "id") * 100,
@@ -385,27 +385,27 @@ func (methodWithWrongSignature) MapValues(cols) func(methodWithWrongSignature, e
 // value to value
 type mappableVV struct{}
 
-func (mappableVV) MapValues(cols) func(*Values) (mappableVV, error) {
+func (mappableVV) MapValues(context.Context, cols) func(*Values) (mappableVV, error) {
 	return nil
 }
 
 // value to pointer
 type mappableVP struct{}
 
-func (mappableVP) MapValues(cols) func(*Values) (*mappableVP, error) {
+func (mappableVP) MapValues(context.Context, cols) func(*Values) (*mappableVP, error) {
 	return nil
 }
 
 // pointer to value
 type mappablePV struct{}
 
-func (*mappablePV) MapValues(cols) func(*Values) (mappablePV, error) {
+func (*mappablePV) MapValues(context.Context, cols) func(*Values) (mappablePV, error) {
 	return nil
 }
 
 // pointer to pointer
 type mappablePP struct{}
 
-func (*mappablePP) MapValues(cols) func(*Values) (*mappablePP, error) {
+func (*mappablePP) MapValues(context.Context, cols) func(*Values) (*mappablePP, error) {
 	return nil
 }
