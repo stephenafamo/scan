@@ -51,7 +51,8 @@ func RunMapperTests[T any](t *testing.T, cases MapperTests[T]) {
 func RunMapperTest[T any](t *testing.T, name string, tc MapperTest[T]) {
 	t.Helper()
 	t.Run(name, func(t *testing.T) {
-		m := tc.Mapper(context.Background(), tc.Values.columnsCopy())
+		ctx := context.Background()
+		m := tc.Mapper(ctx, tc.Values.columnsCopy())
 
 		val, err := m(tc.Values)
 		if diff := cmp.Diff(tc.ExpectedError, err); diff != "" {

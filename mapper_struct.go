@@ -52,7 +52,7 @@ func structMapperFrom[T any](ctx context.Context, c cols, s structMapper) func(*
 		return errorMapper[T](err)
 	}
 
-	return mapperFromMapping[T](mapping, typ, isPointer, s.allowUnknownColumns)(c)
+	return mapperFromMapping[T](mapping, typ, isPointer, s.allowUnknownColumns)(ctx, c)
 }
 
 // Check if there are any errors, and returns if it is a pointer or not
@@ -359,12 +359,12 @@ func (s structMapper) setMappings(typ reflect.Type, prefix string, v visited, m 
 	}
 }
 
-func mapperFromMapping[T any](m mapping, typ reflect.Type, isPointer, allowUnknown bool) func(cols) func(*Values) (T, error) {
+func mapperFromMapping[T any](m mapping, typ reflect.Type, isPointer, allowUnknown bool) func(context.Context, cols) func(*Values) (T, error) {
 	if isPointer {
 		typ = typ.Elem()
 	}
 
-	return func(c cols) func(*Values) (T, error) {
+	return func(ctx context.Context, c cols) func(*Values) (T, error) {
 		// Filter the mapping so we only ask for the available columns
 		filtered := make(mapping)
 		for name := range c {
