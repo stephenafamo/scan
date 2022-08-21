@@ -13,6 +13,10 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
+func toPtr[T any](v T) *T {
+	return &v
+}
+
 type MapperTests[T any] map[string]MapperTest[T]
 
 type MapperTest[T any] struct {
@@ -225,6 +229,30 @@ func TestStructMapper(t *testing.T) {
 		ExpectedVal: User{ID: 1, Name: "The Name"},
 	})
 
+	RunMapperTest(t, "with pointer columns 1", MapperTest[PtrUser1]{
+		Values: &Values{
+			columns: columnNames("id", "name", "created_at", "updated_at"),
+			scanned: []any{1, "The Name", now, now.Add(time.Hour)},
+		},
+		Mapper: StructMapper[PtrUser1],
+		ExpectedVal: PtrUser1{
+			ID: toPtr(1), Name: "The Name",
+			PtrTimestamps: PtrTimestamps{CreatedAt: &now, UpdatedAt: toPtr(now.Add(time.Hour))},
+		},
+	})
+
+	RunMapperTest(t, "with pointer columns 2", MapperTest[PtrUser2]{
+		Values: &Values{
+			columns: columnNames("id", "name", "created_at", "updated_at"),
+			scanned: []any{1, "The Name", now, now.Add(time.Hour)},
+		},
+		Mapper: StructMapper[PtrUser2],
+		ExpectedVal: PtrUser2{
+			ID: 1, Name: toPtr("The Name"),
+			PtrTimestamps: &PtrTimestamps{CreatedAt: &now, UpdatedAt: toPtr(now.Add(time.Hour))},
+		},
+	})
+
 	RunMapperTest(t, "anonymous embeds", MapperTest[UserWithTimestamps]{
 		Values: &Values{
 			columns: columnNames("id", "name", "created_at", "updated_at"),
@@ -422,9 +450,26 @@ type Timestamps struct {
 	UpdatedAt time.Time
 }
 
+type PtrTimestamps struct {
+	CreatedAt *time.Time
+	UpdatedAt *time.Time
+}
+
 type User struct {
 	ID   int
 	Name string
+}
+
+type PtrUser1 struct {
+	ID   *int
+	Name string
+	PtrTimestamps
+}
+
+type PtrUser2 struct {
+	ID   int
+	Name *string
+	*PtrTimestamps
 }
 
 type UserWithTimestamps struct {

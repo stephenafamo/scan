@@ -96,25 +96,30 @@ func (v *Values) record(name string, t reflect.Type) {
 }
 
 func (v *Values) scanRow(r Row) error {
-	pointers := make([]any, len(v.columns))
+	targets := make([]any, len(v.columns))
 
 	for name, i := range v.columns {
 		t := v.types[name]
 		if t == nil {
 			var fallback interface{}
-			pointers[i] = &fallback
+			targets[i] = &fallback
 
 			continue
 		}
 
-		pointers[i] = reflect.New(t).Interface()
+		// pointers[i] = reflect.New(t).Interface()
+		if t.Kind() == reflect.Pointer {
+			targets[i] = reflect.New(t).Elem().Interface()
+		} else {
+			targets[i] = reflect.New(t).Interface()
+		}
 	}
 
-	err := r.Scan(pointers...)
+	err := r.Scan(targets...)
 	if err != nil {
 		return err
 	}
 
-	v.scanned = pointers
+	v.scanned = targets
 	return nil
 }

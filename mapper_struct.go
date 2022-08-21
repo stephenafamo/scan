@@ -58,7 +58,7 @@ func structMapperFrom[T any](ctx context.Context, c cols, s structMapper) func(*
 		return m(ctx, c)
 	}
 
-	mapping, err := s.getMapping(typ, isPointer)
+	mapping, err := s.getMapping(typ)
 	if err != nil {
 		return errorMapper[T](err)
 	}
@@ -272,13 +272,9 @@ type structMapper struct {
 	maxDepth            int
 }
 
-func (s structMapper) getMapping(typ reflect.Type, isPointer bool) (mapping, error) {
+func (s structMapper) getMapping(typ reflect.Type) (mapping, error) {
 	if typ == nil {
 		return nil, fmt.Errorf("Nil type passed to StructMapper")
-	}
-
-	if isPointer {
-		typ = typ.Elem()
 	}
 
 	m := make(mapping)
@@ -296,13 +292,20 @@ func (s structMapper) setMappings(typ reflect.Type, prefix string, v visited, m 
 
 	var hasExported bool
 
+	var isPointer bool
+	if typ.Kind() == reflect.Pointer {
+		isPointer = true
+		typ = typ.Elem()
+	}
+
 	// If it implements a scannable type, then it can be used
 	// as a value itself. Return it
 	for _, scannable := range s.scannableTypes {
 		if reflect.PtrTo(typ).Implements(scannable) {
 			m[prefix] = mapinfo{
-				position: position,
-				init:     inits,
+				position:  position,
+				init:      inits,
+				isPointer: isPointer,
 			}
 			return
 		}
@@ -344,19 +347,23 @@ func (s structMapper) setMappings(typ reflect.Type, prefix string, v visited, m 
 
 		currentIndex := append(position, i)
 		fieldType := field.Type
+		var isPointer bool
+
 		if fieldType.Kind() == reflect.Pointer {
 			inits = append(inits, currentIndex)
 			fieldType = fieldType.Elem()
+			isPointer = true
 		}
 
 		if fieldType.Kind() == reflect.Struct {
-			s.setMappings(fieldType, key, v.copy(), m, inits, currentIndex...)
+			s.setMappings(field.Type, key, v.copy(), m, inits, currentIndex...)
 			continue
 		}
 
 		m[key] = mapinfo{
-			position: currentIndex,
-			init:     inits,
+			position:  currentIndex,
+			init:      inits,
+			isPointer: isPointer,
 		}
 	}
 
@@ -364,8 +371,9 @@ func (s structMapper) setMappings(typ reflect.Type, prefix string, v visited, m 
 	// directly scan into it
 	if !hasExported {
 		m[prefix] = mapinfo{
-			position: position,
-			init:     inits,
+			position:  position,
+			init:      inits,
+			isPointer: isPointer,
 		}
 	}
 }
@@ -429,7 +437,12 @@ func mapperFromMapping[T any](m mapping, typ reflect.Type, isPointer, allowUnkno
 				}
 
 				fv := row.FieldByIndex(info.position)
-				fv.Set(ReflectedValue(v, name, fv.Type()))
+				val := ReflectedValue(v, name, fv.Type())
+				if info.isPointer {
+					fv.Elem().Set(val)
+				} else {
+					fv.Set(val)
+				}
 			}
 
 			if isPointer {

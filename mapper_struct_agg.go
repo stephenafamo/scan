@@ -46,7 +46,7 @@ func aggStructMapperFrom[T any, Ts ~[]T](ctx context.Context, c cols, s structMa
 		return errorMapper[Ts](err)
 	}
 
-	mapping, err := s.getMapping(typ, isPointer)
+	mapping, err := s.getMapping(typ)
 	if err != nil {
 		return errorMapper[Ts](err)
 	}

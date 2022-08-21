@@ -25,8 +25,9 @@ func (v visited) copy() visited {
 type mapping = map[string]mapinfo
 
 type mapinfo struct {
-	position []int
-	init     [][]int
+	position  []int
+	init      [][]int
+	isPointer bool
 }
 
 // Mapper is a function that return the mapping function.
