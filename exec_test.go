@@ -3,6 +3,7 @@ package scan
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -71,6 +72,7 @@ type queryCase[T any] struct {
 	rows        rows
 	query       []string // columns to select
 	mapper      Mapper[T]
+	mapperMods  []MapperMod
 	expectOne   T
 	expectAll   []T
 	expectedErr error
@@ -78,9 +80,13 @@ type queryCase[T any] struct {
 
 func testQuery[T any](t *testing.T, name string, tc queryCase[T]) {
 	t.Helper()
-	ctx := context.Background()
 
 	t.Run(name, func(t *testing.T) {
+		ctx := context.Background()
+		if len(tc.mapperMods) > 0 {
+			ctx = context.WithValue(ctx, CtxKeyMapperMods, tc.mapperMods)
+		}
+
 		ex := createDB(t, tc.columns)
 		insert(t, ex, colSliceFromMap(tc.columns), tc.rows...)
 		query := createQuery(t, tc.query)
@@ -178,6 +184,31 @@ func TestStruct(t *testing.T) {
 		mapper:    StructMapper[User],
 		expectOne: user1,
 		expectAll: []User{user1, user2},
+	})
+
+	testQuery(t, "userWithMod", queryCase[*User]{
+		columns: strstr{{"id", "int64"}, {"name", "string"}},
+		rows:    rows{[]any{1, "foo"}, []any{2, "bar"}},
+		query:   []string{"id", "name"},
+		mapper:  StructMapper[*User],
+		mapperMods: []MapperMod{
+			func(ctx context.Context, c cols) MapperModFunc {
+				return func(v *Values, o any) error {
+					u, ok := o.(*User)
+					if !ok {
+						return errors.New("wrong retrieved type")
+					}
+					u.ID *= 200
+					u.Name += " modified"
+					return nil
+				}
+			},
+		},
+		expectOne: &User{ID: 200, Name: "foo modified"},
+		expectAll: []*User{
+			{ID: 200, Name: "foo modified"},
+			{ID: 400, Name: "bar modified"},
+		},
 	})
 
 	createdAt1 := randate()

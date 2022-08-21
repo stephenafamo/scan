@@ -16,6 +16,11 @@ var (
 	ctxTyp  = reflect.TypeOf((*context.Context)(nil)).Elem()
 )
 
+type contextKey string
+
+// CtxKeyMapperMods should be set to []MapperModFunc
+var CtxKeyMapperMods contextKey = "mapper mod"
+
 // Uses reflection to create a mapping function for a struct type
 // using the default options
 func StructMapper[T any](ctx context.Context, c cols) func(*Values) (T, error) {

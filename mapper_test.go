@@ -3,6 +3,7 @@ package scan
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"reflect"
 	"strconv"
 	"strings"
@@ -296,6 +297,25 @@ func TestStructMapper(t *testing.T) {
 		},
 		Mapper:      StructMapper[UserWithMapper],
 		ExpectedVal: UserWithMapper{ID: 100, Name: "@The Name"},
+	})
+
+	RunMapperTest(t, "with mod", MapperTest[*User]{
+		Values: &Values{
+			columns: columnNames("id", "name"),
+			scanned: []any{2, "The Name"},
+		},
+		Mapper: Mod(StructMapper[*User], func(ctx context.Context, c cols) MapperModFunc {
+			return func(v *Values, o any) error {
+				u, ok := o.(*User)
+				if !ok {
+					return errors.New("wrong retrieved type")
+				}
+				u.ID *= 200
+				u.Name += " modified"
+				return nil
+			}
+		}),
+		ExpectedVal: &User{ID: 400, Name: "The Name modified"},
 	})
 }
 
