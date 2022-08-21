@@ -357,6 +357,30 @@ func TestStructMapper(t *testing.T) {
 	})
 }
 
+func TestAggStructMapper(t *testing.T) {
+	RunMapperTest(t, "flat struct", MapperTest[[]User]{
+		Values: &Values{
+			columns: columnNames("id", "name"),
+			scanned: []any{[]int{1, 2}, []string{"The Name", "Another Name"}},
+		},
+		Mapper: AggStructMapper[User, []User](defaultConverter{}),
+		ExpectedVal: []User{
+			{ID: 1, Name: "The Name"},
+			{ID: 2, Name: "Another Name"},
+		},
+	})
+}
+
+type defaultConverter struct{}
+
+func (d defaultConverter) ConvertToAgg(typ reflect.Type) reflect.Type {
+	return reflect.SliceOf(typ)
+}
+
+func (d defaultConverter) ConvertFromAgg(val reflect.Value) reflect.Value {
+	return val
+}
+
 func TestMappable(t *testing.T) {
 	testMappable[noMatchingMethod](t, false)
 	testMappable[methodWithWrongSignature](t, false)

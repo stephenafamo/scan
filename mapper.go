@@ -66,6 +66,10 @@ func errorMapper[T any](err error, meta ...string) func(*Values) (T, error) {
 
 // Returns a [MappingError] with some optional metadata
 func createError(err error, meta ...string) error {
+	if me, ok := err.(*MappingError); ok && len(meta) == 0 {
+		return me
+	}
+
 	return &MappingError{cause: err, meta: meta}
 }
 

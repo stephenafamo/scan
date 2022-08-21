@@ -35,7 +35,7 @@ func StructMapper[T any](ctx context.Context, c cols) func(*Values) (T, error) {
 
 // Uses reflection to create a mapping function for a struct type
 // using with custom options
-func CustomStructMapper[T any](opts ...MappingOption) func(context.Context, cols) func(*Values) (T, error) {
+func CustomStructMapper[T any](opts ...MappingOption) Mapper[T] {
 	return func(ctx context.Context, c cols) func(*Values) (T, error) {
 		mapper, err := newStructMapper(opts...)
 		if err != nil {
@@ -370,39 +370,49 @@ func (s structMapper) setMappings(typ reflect.Type, prefix string, v visited, m 
 	}
 }
 
+func filterColumns(ctx context.Context, c cols, m mapping, allowUnknown bool) (mapping, error) {
+	ctxAllowCols, _ := ctx.Value(CtxKeyAllowUnknownColumns).(bool)
+	allowUnknown = allowUnknown || ctxAllowCols
+
+	prefix, _ := ctx.Value(CtxKeyStructTagPrefix).(string)
+
+	// Filter the mapping so we only ask for the available columns
+	filtered := make(mapping)
+	for name := range c {
+		key := name
+		if prefix != "" {
+			if !strings.HasPrefix(name, prefix) {
+				continue
+			}
+
+			key = name[len(prefix):]
+		}
+
+		v, ok := m[key]
+		if !ok {
+			if !allowUnknown {
+				err := fmt.Errorf("No destination for column %q", name)
+				return nil, createError(err, "no destination", name)
+			}
+			continue
+		}
+
+		filtered[name] = v
+	}
+
+	return filtered, nil
+}
+
 func mapperFromMapping[T any](m mapping, typ reflect.Type, isPointer, allowUnknown bool) func(context.Context, cols) func(*Values) (T, error) {
 	if isPointer {
 		typ = typ.Elem()
 	}
 
 	return func(ctx context.Context, c cols) func(*Values) (T, error) {
-		ctxAllowCols, _ := ctx.Value(CtxKeyAllowUnknownColumns).(bool)
-		allowUnknown = allowUnknown || ctxAllowCols
-
-		prefix, _ := ctx.Value(CtxKeyStructTagPrefix).(string)
-
 		// Filter the mapping so we only ask for the available columns
-		filtered := make(mapping)
-		for name := range c {
-			key := name
-			if prefix != "" {
-				if !strings.HasPrefix(name, prefix) {
-					continue
-				}
-
-				key = name[len(prefix):]
-			}
-
-			v, ok := m[key]
-			if !ok {
-				if !allowUnknown {
-					err := fmt.Errorf("No destination for column %q", name)
-					return errorMapper[T](err, "no destination", name)
-				}
-				continue
-			}
-
-			filtered[name] = v
+		filtered, err := filterColumns(ctx, c, m, allowUnknown)
+		if err != nil {
+			return errorMapper[T](err)
 		}
 
 		return func(v *Values) (T, error) {
@@ -419,8 +429,7 @@ func mapperFromMapping[T any](m mapping, typ reflect.Type, isPointer, allowUnkno
 				}
 
 				fv := row.FieldByIndex(info.position)
-				val := AnyValue(v, name, fv.Type())
-				fv.Set(reflect.ValueOf(val))
+				fv.Set(ReflectedValue(v, name, fv.Type()))
 			}
 
 			if isPointer {

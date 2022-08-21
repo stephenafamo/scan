@@ -35,7 +35,7 @@ func TestValueRecording(t *testing.T) {
 
 	// record the values
 	for k, v := range Columns {
-		AnyValue(vals, k, reflect.TypeOf(v))
+		ReflectedValue(vals, k, reflect.TypeOf(v))
 	}
 
 	// turn off recording
@@ -44,7 +44,7 @@ func TestValueRecording(t *testing.T) {
 	// get the values and check the type
 	for k, v := range Columns {
 		vTyp := reflect.TypeOf(v)
-		gotten := AnyValue(vals, k, vTyp)
+		gotten := ReflectedValue(vals, k, vTyp).Interface()
 		// We expect the zero value because there was no
 		// scanning
 		expected := reflect.Zero(vTyp).Interface()

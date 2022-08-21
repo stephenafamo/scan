@@ -18,15 +18,15 @@ func Value[T any](v *Values, name string) T {
 	return v.get(name).(T)
 }
 
-// AnyValue returns the named value as an [any]
+// ReflectedValue returns the named value as an [reflect.Value]
 // When not recording, it will panic if the requested type does not match
 // what was recorded
-func AnyValue(v *Values, name string, typ reflect.Type) any {
+func ReflectedValue(v *Values, name string, typ reflect.Type) reflect.Value {
 	if v.recording {
 		v.record(name, typ)
 	}
 
-	return v.get(name)
+	return v.getRef(name)
 }
 
 func newValues(r Rows) (*Values, error) {
@@ -75,16 +75,20 @@ func (v *Values) columnsCopy() map[string]int {
 	return m
 }
 
-func (v *Values) get(name string) any {
+func (v *Values) getRef(name string) reflect.Value {
 	index, ok := v.columns[name]
 	if !ok || v.recording {
-		x := reflect.New(v.types[name]).Elem().Interface()
+		x := reflect.New(v.types[name]).Elem()
 		return x
 	}
 
 	return reflect.Indirect(
 		reflect.ValueOf(v.scanned[index]),
-	).Interface()
+	)
+}
+
+func (v *Values) get(name string) any {
+	return v.getRef(name).Interface()
 }
 
 func (v *Values) record(name string, t reflect.Type) {
