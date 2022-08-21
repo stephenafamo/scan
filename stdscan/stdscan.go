@@ -40,15 +40,15 @@ type Queryer interface {
 }
 
 // convert wraps an Queryer and makes it a Queryer
-func convert[T Queryer](wrapped T) scan.Queryer {
-	return queryer[T]{wrapped: wrapped}
+func convert(wrapped Queryer) scan.Queryer {
+	return queryer{wrapped: wrapped}
 }
 
-type queryer[T Queryer] struct {
-	wrapped T
+type queryer struct {
+	wrapped Queryer
 }
 
 // QueryContext executes a query that returns rows, typically a SELECT. The args are for any placeholder parameters in the query.
-func (q queryer[T]) QueryContext(ctx context.Context, query string, args ...any) (scan.Rows, error) {
+func (q queryer) QueryContext(ctx context.Context, query string, args ...any) (scan.Rows, error) {
 	return q.wrapped.QueryContext(ctx, query, args...)
 }
