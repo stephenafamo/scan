@@ -21,6 +21,9 @@ type contextKey string
 // CtxKeyStructTagPrefix is used to add a prefix to the desired field for struct mapping
 var CtxKeyStructTagPrefix contextKey = "struct tag prefix"
 
+// CtxKeyAllowUnknownColumns makes it possible to allow unknown columns using the context
+var CtxKeyAllowUnknownColumns contextKey = "allow unknown columns"
+
 // CtxKeyMapperMods should be set to []MapperModFunc
 var CtxKeyMapperMods contextKey = "mapper mod"
 
@@ -373,6 +376,9 @@ func mapperFromMapping[T any](m mapping, typ reflect.Type, isPointer, allowUnkno
 	}
 
 	return func(ctx context.Context, c cols) func(*Values) (T, error) {
+		ctxAllowCols, _ := ctx.Value(CtxKeyAllowUnknownColumns).(bool)
+		allowUnknown = allowUnknown || ctxAllowCols
+
 		prefix, _ := ctx.Value(CtxKeyStructTagPrefix).(string)
 
 		// Filter the mapping so we only ask for the available columns

@@ -16,11 +16,12 @@ import (
 type MapperTests[T any] map[string]MapperTest[T]
 
 type MapperTest[T any] struct {
-	Values        *Values
-	Prefix        string
-	Mapper        Mapper[T]
-	ExpectedVal   T
-	ExpectedError error
+	Values           *Values
+	Prefix           string
+	AllowUnknownCols bool
+	Mapper           Mapper[T]
+	ExpectedVal      T
+	ExpectedError    error
 }
 
 // To quickly generate column definition for tests
@@ -56,6 +57,9 @@ func RunMapperTest[T any](t *testing.T, name string, tc MapperTest[T]) {
 		ctx := context.Background()
 		if tc.Prefix != "" {
 			ctx = context.WithValue(ctx, CtxKeyStructTagPrefix, tc.Prefix)
+		}
+		if tc.AllowUnknownCols {
+			ctx = context.WithValue(ctx, CtxKeyAllowUnknownColumns, tc.AllowUnknownCols)
 		}
 
 		m := tc.Mapper(ctx, tc.Values.columnsCopy())
@@ -195,12 +199,21 @@ func TestStructMapper(t *testing.T) {
 		ExpectedError: createError(nil, "no destination", "random"),
 	})
 
-	RunMapperTest(t, "No destination permitted", MapperTest[*User]{
+	RunMapperTest(t, "Unknown cols permitted with custom mapper", MapperTest[*User]{
 		Values: &Values{
 			columns: columnNames("random"),
 		},
 		Mapper:      CustomStructMapper[*User](WithAllowUnknownColumns(true)),
 		ExpectedVal: &User{},
+	})
+
+	RunMapperTest(t, "Unknown cols permitted with context", MapperTest[User]{
+		Values: &Values{
+			columns: columnNames("random"),
+		},
+		Mapper:           StructMapper[User],
+		AllowUnknownCols: true,
+		ExpectedVal:      User{},
 	})
 
 	RunMapperTest(t, "flat struct", MapperTest[User]{
