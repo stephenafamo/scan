@@ -17,6 +17,7 @@ type MapperTests[T any] map[string]MapperTest[T]
 
 type MapperTest[T any] struct {
 	Values        *Values
+	Prefix        string
 	Mapper        Mapper[T]
 	ExpectedVal   T
 	ExpectedError error
@@ -53,6 +54,10 @@ func RunMapperTest[T any](t *testing.T, name string, tc MapperTest[T]) {
 	t.Helper()
 	t.Run(name, func(t *testing.T) {
 		ctx := context.Background()
+		if tc.Prefix != "" {
+			ctx = context.WithValue(ctx, CtxKeyStructTagPrefix, tc.Prefix)
+		}
+
 		m := tc.Mapper(ctx, tc.Values.columnsCopy())
 
 		val, err := m(tc.Values)
@@ -297,6 +302,26 @@ func TestStructMapper(t *testing.T) {
 		},
 		Mapper:      StructMapper[UserWithMapper],
 		ExpectedVal: UserWithMapper{ID: 100, Name: "@The Name"},
+	})
+
+	RunMapperTest(t, "with prefix", MapperTest[User]{
+		Values: &Values{
+			columns: columnNames("prefix--id", "prefix--name"),
+			scanned: []any{1, "The Name"},
+		},
+		Mapper:      StructMapper[User],
+		Prefix:      "prefix--",
+		ExpectedVal: User{ID: 1, Name: "The Name"},
+	})
+
+	RunMapperTest(t, "with prefix and non-prefixed column", MapperTest[User]{
+		Values: &Values{
+			columns: columnNames("id", "prefix--name"),
+			scanned: []any{1, "The Name"},
+		},
+		Mapper:      StructMapper[User],
+		Prefix:      "prefix--",
+		ExpectedVal: User{ID: 0, Name: "The Name"},
 	})
 
 	RunMapperTest(t, "with mod", MapperTest[*User]{

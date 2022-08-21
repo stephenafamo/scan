@@ -18,6 +18,9 @@ var (
 
 type contextKey string
 
+// CtxKeyStructTagPrefix is used to add a prefix to the desired field for struct mapping
+var CtxKeyStructTagPrefix contextKey = "struct tag prefix"
+
 // CtxKeyMapperMods should be set to []MapperModFunc
 var CtxKeyMapperMods contextKey = "mapper mod"
 
@@ -370,10 +373,21 @@ func mapperFromMapping[T any](m mapping, typ reflect.Type, isPointer, allowUnkno
 	}
 
 	return func(ctx context.Context, c cols) func(*Values) (T, error) {
+		prefix, _ := ctx.Value(CtxKeyStructTagPrefix).(string)
+
 		// Filter the mapping so we only ask for the available columns
 		filtered := make(mapping)
 		for name := range c {
-			v, ok := m[name]
+			key := name
+			if prefix != "" {
+				if !strings.HasPrefix(name, prefix) {
+					continue
+				}
+
+				key = name[len(prefix):]
+			}
+
+			v, ok := m[key]
 			if !ok {
 				if !allowUnknown {
 					err := fmt.Errorf("No destination for column %q", name)
