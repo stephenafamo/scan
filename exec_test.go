@@ -185,7 +185,7 @@ func TestStruct(t *testing.T) {
 		columns:   strstr{{"id", "int64"}, {"name", "string"}},
 		rows:      rows{[]any{1, "foo"}, []any{2, "bar"}},
 		query:     []string{"id", "name"},
-		mapper:    StructMapper[User],
+		mapper:    StructMapper[User](),
 		expectOne: user1,
 		expectAll: []User{user1, user2},
 	})
@@ -199,7 +199,7 @@ func TestStruct(t *testing.T) {
 		},
 		rows:        rows{[]any{1, "foo", "100", "foobar"}, []any{2, "bar", "200", "barfoo"}},
 		query:       []string{"id", "name", "missing1", "missing2"},
-		mapper:      StructMapper[User],
+		mapper:      StructMapper[User](),
 		expectedErr: createError(nil, "no destination", "missing1", "missing2"),
 	})
 
@@ -207,7 +207,7 @@ func TestStruct(t *testing.T) {
 		columns: strstr{{"id", "int64"}, {"name", "string"}},
 		rows:    rows{[]any{1, "foo"}, []any{2, "bar"}},
 		query:   []string{"id", "name"},
-		mapper:  StructMapper[*User],
+		mapper:  StructMapper[*User](),
 		mapperMods: []MapperMod{
 			func(ctx context.Context, c cols) MapperModFunc {
 				return func(v *Values, o any) error {
@@ -247,7 +247,7 @@ func TestStruct(t *testing.T) {
 			[]any{2, "bar", createdAt2, updatedAt2},
 		},
 		query:     []string{"id", "name", "created_at", "updated_at"},
-		mapper:    StructMapper[UserWithTimestamps],
+		mapper:    StructMapper[UserWithTimestamps](),
 		expectOne: UserWithTimestamps{User: user1, Timestamps: timestamp1},
 		expectAll: []UserWithTimestamps{
 			{User: user1, Timestamps: timestamp1},
@@ -306,7 +306,7 @@ func TestCollect(t *testing.T) {
 		rows:    rows{[]any{1, "foo"}, []any{2, "bar"}},
 		query:   []string{"id", "name"},
 		generator: func(ctx context.Context, c cols) any {
-			sm := StructMapper[User](ctx, c)
+			sm := StructMapper[User]()(ctx, c)
 			return func(v *Values) (int, User, error) {
 				user, err := sm(v)
 				return Value[int](v, "id"), user, err

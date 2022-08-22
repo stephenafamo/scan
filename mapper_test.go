@@ -215,7 +215,7 @@ func TestStructMapper(t *testing.T) {
 		Values: &Values{
 			columns: columnNames("random"),
 		},
-		Mapper:      StructMapper[User],
+		Mapper:      StructMapper[User](),
 		Context:     map[contextKey]any{CtxKeyAllowUnknownColumns: true},
 		ExpectedVal: User{},
 	})
@@ -225,7 +225,7 @@ func TestStructMapper(t *testing.T) {
 			columns: columnNames("id", "name"),
 			scanned: []any{1, "The Name"},
 		},
-		Mapper:      StructMapper[User],
+		Mapper:      StructMapper[User](),
 		ExpectedVal: User{ID: 1, Name: "The Name"},
 	})
 
@@ -234,7 +234,7 @@ func TestStructMapper(t *testing.T) {
 			columns: columnNames("id", "name", "created_at", "updated_at"),
 			scanned: []any{1, "The Name", now, now.Add(time.Hour)},
 		},
-		Mapper: StructMapper[PtrUser1],
+		Mapper: StructMapper[PtrUser1](),
 		ExpectedVal: PtrUser1{
 			ID: toPtr(1), Name: "The Name",
 			PtrTimestamps: PtrTimestamps{CreatedAt: &now, UpdatedAt: toPtr(now.Add(time.Hour))},
@@ -246,7 +246,7 @@ func TestStructMapper(t *testing.T) {
 			columns: columnNames("id", "name", "created_at", "updated_at"),
 			scanned: []any{1, "The Name", now, now.Add(time.Hour)},
 		},
-		Mapper: StructMapper[PtrUser2],
+		Mapper: StructMapper[PtrUser2](),
 		ExpectedVal: PtrUser2{
 			ID: 1, Name: toPtr("The Name"),
 			PtrTimestamps: &PtrTimestamps{CreatedAt: &now, UpdatedAt: toPtr(now.Add(time.Hour))},
@@ -258,7 +258,7 @@ func TestStructMapper(t *testing.T) {
 			columns: columnNames("id", "name", "created_at", "updated_at"),
 			scanned: []any{10, "The Name", now, now.Add(time.Hour)},
 		},
-		Mapper: StructMapper[UserWithTimestamps],
+		Mapper: StructMapper[UserWithTimestamps](),
 		ExpectedVal: UserWithTimestamps{
 			User:       User{ID: 10, Name: "The Name"},
 			Timestamps: &Timestamps{CreatedAt: now, UpdatedAt: now.Add(time.Hour)},
@@ -270,7 +270,7 @@ func TestStructMapper(t *testing.T) {
 			columns: columnNames("id", "user.id", "user.name", "user.created_at"),
 			scanned: []any{100, 10, "The Name", now},
 		},
-		Mapper: StructMapper[Blog],
+		Mapper: StructMapper[Blog](),
 		ExpectedVal: Blog{
 			ID: 100,
 			User: UserWithTimestamps{
@@ -285,7 +285,7 @@ func TestStructMapper(t *testing.T) {
 			columns: columnNames("tag_id", "tag_name"),
 			scanned: []any{1, "The Name"},
 		},
-		Mapper:      StructMapper[Tagged],
+		Mapper:      StructMapper[Tagged](),
 		ExpectedVal: Tagged{ID: 1, Name: "The Name"},
 	})
 
@@ -339,7 +339,7 @@ func TestStructMapper(t *testing.T) {
 			columns: columnNames("id", "name"),
 			scanned: []any{1, "The Name"},
 		},
-		Mapper:      StructMapper[UserWithMapper],
+		Mapper:      StructMapper[UserWithMapper](),
 		ExpectedVal: UserWithMapper{ID: 100, Name: "@The Name"},
 	})
 
@@ -348,7 +348,7 @@ func TestStructMapper(t *testing.T) {
 			columns: columnNames("id", "name"),
 			scanned: []any{2, "The Name"},
 		},
-		Mapper: Mod(StructMapper[*User], func(ctx context.Context, c cols) MapperModFunc {
+		Mapper: Mod(StructMapper[*User](), func(ctx context.Context, c cols) MapperModFunc {
 			return func(v *Values, o any) error {
 				u, ok := o.(*User)
 				if !ok {

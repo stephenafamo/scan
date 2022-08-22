@@ -29,8 +29,8 @@ var CtxKeyMapperMods contextKey = "mapper mod"
 
 // Uses reflection to create a mapping function for a struct type
 // using the default options
-func StructMapper[T any](ctx context.Context, c cols) func(*Values) (T, error) {
-	return structMapperFrom[T](ctx, c, defaultStructMapper)
+func StructMapper[T any]() Mapper[T] {
+	return CustomStructMapper[T](defaultStructMapper)
 }
 
 // Uses reflection to create a mapping function for a struct type
