@@ -74,6 +74,26 @@ func RunMapperTest[T any](t *testing.T, name string, tc MapperTest[T]) {
 	})
 }
 
+type CustomStructMapperTest[T any] struct {
+	MapperTest[T]
+	Options []MappingOption
+}
+
+func RunCustomStructMapperTest[T any](t *testing.T, name string, tc CustomStructMapperTest[T]) {
+	t.Helper()
+	m := tc.MapperTest
+	src, err := NewStructMapperSource(tc.Options...)
+	if diff := cmp.Diff(tc.ExpectedError, err); diff != "" {
+		t.Fatalf("diff: %s", diff)
+	}
+	if err != nil {
+		return
+	}
+
+	m.Mapper = CustomStructMapper[T](src)
+	RunMapperTest(t, name, m)
+}
+
 func TestColumnMapper(t *testing.T) {
 	RunMapperTest(t, "single column", MapperTest[int]{
 		Values: &Values{
@@ -269,43 +289,49 @@ func TestStructMapper(t *testing.T) {
 		ExpectedVal: Tagged{ID: 1, Name: "The Name"},
 	})
 
-	RunMapperTest(t, "custom column separator", MapperTest[Blog]{
-		Values: &Values{
-			columns: columnNames("id", "user,id", "user,name", "user,created_at"),
-			scanned: []any{100, 10, "The Name", now},
-		},
-		Mapper: CustomStructMapper[Blog](WithColumnSeparator(",")),
-		ExpectedVal: Blog{
-			ID: 100,
-			User: UserWithTimestamps{
-				User:       User{ID: 10, Name: "The Name"},
-				Timestamps: &Timestamps{CreatedAt: now},
+	RunCustomStructMapperTest(t, "custom column separator", CustomStructMapperTest[Blog]{
+		MapperTest: MapperTest[Blog]{
+			Values: &Values{
+				columns: columnNames("id", "user,id", "user,name", "user,created_at"),
+				scanned: []any{100, 10, "The Name", now},
+			},
+			ExpectedVal: Blog{
+				ID: 100,
+				User: UserWithTimestamps{
+					User:       User{ID: 10, Name: "The Name"},
+					Timestamps: &Timestamps{CreatedAt: now},
+				},
 			},
 		},
+		Options: []MappingOption{WithColumnSeparator(",")},
 	})
 
-	RunMapperTest(t, "custom name mapper", MapperTest[Blog]{
-		Values: &Values{
-			columns: columnNames("ID", "USER.ID", "USER.NAME", "USER.CREATEDAT"),
-			scanned: []any{100, 10, "The Name", now},
-		},
-		Mapper: CustomStructMapper[Blog](WithFieldNameMapper(strings.ToUpper)),
-		ExpectedVal: Blog{
-			ID: 100,
-			User: UserWithTimestamps{
-				User:       User{ID: 10, Name: "The Name"},
-				Timestamps: &Timestamps{CreatedAt: now},
+	RunCustomStructMapperTest(t, "custom name mapper", CustomStructMapperTest[Blog]{
+		MapperTest: MapperTest[Blog]{
+			Values: &Values{
+				columns: columnNames("ID", "USER.ID", "USER.NAME", "USER.CREATEDAT"),
+				scanned: []any{100, 10, "The Name", now},
+			},
+			ExpectedVal: Blog{
+				ID: 100,
+				User: UserWithTimestamps{
+					User:       User{ID: 10, Name: "The Name"},
+					Timestamps: &Timestamps{CreatedAt: now},
+				},
 			},
 		},
+		Options: []MappingOption{WithFieldNameMapper(strings.ToUpper)},
 	})
 
-	RunMapperTest(t, "custom tag", MapperTest[Tagged]{
-		Values: &Values{
-			columns: columnNames("custom_id", "custom_name"),
-			scanned: []any{1, "The Name"},
+	RunCustomStructMapperTest(t, "custom tag", CustomStructMapperTest[Tagged]{
+		MapperTest: MapperTest[Tagged]{
+			Values: &Values{
+				columns: columnNames("custom_id", "custom_name"),
+				scanned: []any{1, "The Name"},
+			},
+			ExpectedVal: Tagged{ID: 1, Name: "The Name"},
 		},
-		Mapper:      CustomStructMapper[Tagged](WithStructTagKey("custom")),
-		ExpectedVal: Tagged{ID: 1, Name: "The Name"},
+		Options: []MappingOption{WithStructTagKey("custom")},
 	})
 
 	RunMapperTest(t, "custom tag", MapperTest[UserWithMapper]{

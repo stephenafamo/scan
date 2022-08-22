@@ -35,17 +35,13 @@ func StructMapper[T any](ctx context.Context, c cols) func(*Values) (T, error) {
 
 // Uses reflection to create a mapping function for a struct type
 // using with custom options
-func CustomStructMapper[T any](opts ...MappingOption) Mapper[T] {
+func CustomStructMapper[T any](src StructMapperSource) Mapper[T] {
 	return func(ctx context.Context, c cols) func(*Values) (T, error) {
-		mapper, err := newStructMapper(opts...)
-		if err != nil {
-			return errorMapper[T](err)
-		}
-		return structMapperFrom[T](ctx, c, *mapper)
+		return structMapperFrom[T](ctx, c, src)
 	}
 }
 
-func structMapperFrom[T any](ctx context.Context, c cols, s structMapper) func(*Values) (T, error) {
+func structMapperFrom[T any](ctx context.Context, c cols, s StructMapperSource) func(*Values) (T, error) {
 	var x T
 	typ := reflect.TypeOf(x)
 
@@ -175,25 +171,25 @@ func snakeCaseFieldFunc(str string) string {
 	return strings.ToLower(snake)
 }
 
-// newStructMapper creates a new Mapping object with provided list of options.
-func newStructMapper(opts ...MappingOption) (*structMapper, error) {
-	api := defaultStructMapper
+// NewStructMapperSource creates a new Mapping object with provided list of options.
+func NewStructMapperSource(opts ...MappingOption) (StructMapperSource, error) {
+	src := defaultStructMapper
 	for _, o := range opts {
-		if err := o(&api); err != nil {
-			return nil, err
+		if err := o(&src); err != nil {
+			return src, err
 		}
 	}
-	return &api, nil
+	return src, nil
 }
 
 // MappingOption is a function type that changes Mapping configuration.
-type MappingOption func(api *structMapper) error
+type MappingOption func(src *StructMapperSource) error
 
 // WithStructTagKey allows to use a custom struct tag key.
 // The default tag key is `db`.
 func WithStructTagKey(tagKey string) MappingOption {
-	return func(api *structMapper) error {
-		api.structTagKey = tagKey
+	return func(src *StructMapperSource) error {
+		src.structTagKey = tagKey
 		return nil
 	}
 }
@@ -201,8 +197,8 @@ func WithStructTagKey(tagKey string) MappingOption {
 // WithColumnSeparator allows to use a custom separator character for column name when combining nested structs.
 // The default separator is "." character.
 func WithColumnSeparator(separator string) MappingOption {
-	return func(api *structMapper) error {
-		api.columnSeparator = separator
+	return func(src *StructMapperSource) error {
+		src.columnSeparator = separator
 		return nil
 	}
 }
@@ -210,8 +206,8 @@ func WithColumnSeparator(separator string) MappingOption {
 // WithFieldNameMapper allows to use a custom function to map field name to column names.
 // The default function maps fields names to "snake_case"
 func WithFieldNameMapper(mapperFn NameMapperFunc) MappingOption {
-	return func(api *structMapper) error {
-		api.fieldMapperFn = mapperFn
+	return func(src *StructMapperSource) error {
+		src.fieldMapperFn = mapperFn
 		return nil
 	}
 }
@@ -231,7 +227,7 @@ func WithFieldNameMapper(mapperFn NameMapperFunc) MappingOption {
 // You can pass it to dbscan this way:
 // dbscan.WithScannableTypes((*Scanner)(nil)).
 func WithScannableTypes(scannableTypes ...interface{}) MappingOption {
-	return func(api *structMapper) error {
+	return func(src *StructMapperSource) error {
 		for _, stOpt := range scannableTypes {
 			st := reflect.TypeOf(stOpt)
 			if st == nil {
@@ -246,15 +242,15 @@ func WithScannableTypes(scannableTypes ...interface{}) MappingOption {
 				return fmt.Errorf("scannable type must be a pointer to an interface, got %s: %s",
 					st.Kind(), st.String())
 			}
-			api.scannableTypes = append(api.scannableTypes, st)
+			src.scannableTypes = append(src.scannableTypes, st)
 		}
 		return nil
 	}
 }
 
-// structMapper is the core type in dbscan. It implements all the logic and exposes functionality available in the package.
-// With structMapper type users can create a custom structMapper instance and override default settings hence configure dbscan.
-type structMapper struct {
+// StructMapperSource is the core type in dbscan. It implements all the logic and exposes functionality available in the package.
+// With StructMapperSource type users can create a custom StructMapperSource instance and override default settings hence configure dbscan.
+type StructMapperSource struct {
 	structTagKey    string
 	columnSeparator string
 	fieldMapperFn   NameMapperFunc
@@ -262,7 +258,7 @@ type structMapper struct {
 	maxDepth        int
 }
 
-func (s structMapper) getMapping(typ reflect.Type) (mapping, error) {
+func (s StructMapperSource) getMapping(typ reflect.Type) (mapping, error) {
 	if typ == nil {
 		return nil, fmt.Errorf("Nil type passed to StructMapper")
 	}
@@ -273,7 +269,7 @@ func (s structMapper) getMapping(typ reflect.Type) (mapping, error) {
 	return m, nil
 }
 
-func (s structMapper) setMappings(typ reflect.Type, prefix string, v visited, m mapping, inits [][]int, position ...int) {
+func (s StructMapperSource) setMappings(typ reflect.Type, prefix string, v visited, m mapping, inits [][]int, position ...int) {
 	count := v[typ]
 	if count > s.maxDepth {
 		return
@@ -438,7 +434,7 @@ func mapperFromMapping[T any](m mapping, typ reflect.Type, isPointer bool) func(
 }
 
 //nolint:gochecknoglobals
-var defaultStructMapper = structMapper{
+var defaultStructMapper = StructMapperSource{
 	structTagKey:    "db",
 	columnSeparator: ".",
 	fieldMapperFn:   snakeCaseFieldFunc,
