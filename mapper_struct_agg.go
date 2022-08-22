@@ -95,7 +95,9 @@ func aggMapperFromMapping[T any, Ts ~[]T](converter AggConverter, m mapping, typ
 
 				if length == -1 { // not set
 					length = value.Len()
-					all = make(Ts, length)
+					if length > 0 {
+						all = make(Ts, length)
+					}
 				}
 
 				if length != value.Len() {
