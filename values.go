@@ -29,6 +29,17 @@ func ReflectedValue(v *Values, name string, typ reflect.Type) reflect.Value {
 	return v.getRef(name)
 }
 
+// ValueCallback passes a function that will be called for the column
+// this is meant to be used when you need to control the exact value that the column
+// is mapped into.
+func ValueCallback(v *Values, name string, f func() reflect.Value) reflect.Value {
+	if v.recording {
+		v.recordCallback(name, f)
+	}
+
+	return v.getRef(name)
+}
+
 func newValues(r Rows) (*Values, error) {
 	cols, err := r.Columns()
 	if err != nil {
@@ -42,8 +53,9 @@ func newValues(r Rows) (*Values, error) {
 	}
 
 	return &Values{
-		columns: colMap,
-		types:   make(map[string]reflect.Type, len(cols)),
+		columns:       colMap,
+		types:         make(map[string]reflect.Type, len(cols)),
+		pointerGetter: make(map[string]func() reflect.Value),
 	}, nil
 }
 
@@ -52,10 +64,11 @@ func newValues(r Rows) (*Values, error) {
 // Column names must be unique, so
 // if multiple columns have the same name, only the last one remains
 type Values struct {
-	columns   map[string]int
-	recording bool
-	types     map[string]reflect.Type
-	scanned   []any
+	columns       map[string]int
+	recording     bool
+	types         map[string]reflect.Type
+	pointerGetter map[string]func() reflect.Value
+	scanned       []any
 }
 
 // IsRecording returns wether the values are currently in recording mode
@@ -78,6 +91,10 @@ func (v *Values) columnsCopy() map[string]int {
 func (v *Values) getRef(name string) reflect.Value {
 	index, ok := v.columns[name]
 	if !ok || v.recording {
+		if p, ok := v.pointerGetter[name]; ok {
+			return p()
+		}
+
 		x := reflect.New(v.types[name]).Elem()
 		return x
 	}
@@ -95,10 +112,19 @@ func (v *Values) record(name string, t reflect.Type) {
 	v.types[name] = t
 }
 
+func (v *Values) recordCallback(name string, f func() reflect.Value) {
+	v.pointerGetter[name] = f
+}
+
 func (v *Values) scanRow(r Row) error {
 	targets := make([]any, len(v.columns))
 
 	for name, i := range v.columns {
+		if p, ok := v.pointerGetter[name]; ok {
+			targets[i] = p().Interface()
+			continue
+		}
+
 		t := v.types[name]
 		if t == nil {
 			var fallback interface{}

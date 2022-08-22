@@ -10,7 +10,7 @@ type AggConverter interface {
 	// ConvertToAgg should convert a type of the struct's field to a type
 	// that the executor can scan into
 	// For example, for postgres, ConvertToAgg may convert [int] to pq.GenericArray[int]
-	ConvertToAgg(reflect.Type) reflect.Type
+	ConvertToAgg(reflect.Type) reflect.Value
 
 	// ConvertFromAgg should convert an aggregate scannable type to a slice of the field
 	// For example, for postgres, ConvertFromAgg may convert [pq.GenericArray[int]] to [[]int]
@@ -67,7 +67,7 @@ func aggMapperFromMapping[T any, Ts ~[]T](converter AggConverter, m mapping, typ
 		}
 
 		return func(v *Values) (Ts, error) {
-			var all reflect.Value
+			var all Ts
 
 			if len(filtered) == 0 {
 				return nil, nil
@@ -78,7 +78,9 @@ func aggMapperFromMapping[T any, Ts ~[]T](converter AggConverter, m mapping, typ
 			for name, info := range filtered {
 				ft := typ.FieldByIndex(info.position)
 				aggType := converter.ConvertToAgg(ft.Type)
-				aggValue := ReflectedValue(v, name, aggType)
+				aggValue := ValueCallback(v, name, func() reflect.Value {
+					return aggType
+				})
 
 				value := converter.ConvertFromAgg(aggValue)
 				if value.Kind() != reflect.Slice {
@@ -93,21 +95,16 @@ func aggMapperFromMapping[T any, Ts ~[]T](converter AggConverter, m mapping, typ
 
 				if length == -1 { // not set
 					length = value.Len()
-					var sliceTyp reflect.Type
-					if isPointer {
-						sliceTyp = reflect.SliceOf(reflect.PointerTo(typ))
-					} else {
-						sliceTyp = reflect.SliceOf(typ)
-					}
-					all = reflect.MakeSlice(sliceTyp, length, length)
+					all = make(Ts, length)
 				}
 
 				if length != value.Len() {
 					return nil, fmt.Errorf("Column %q has length %d but expected %d", name, value.Len(), length)
 				}
 
+				allVal := reflect.ValueOf(all)
 				for i := 0; i < length; i++ {
-					one := all.Index(i)
+					one := allVal.Index(i)
 					if isPointer {
 						if one.IsZero() {
 							one.Set(reflect.New(typ))
@@ -127,14 +124,14 @@ func aggMapperFromMapping[T any, Ts ~[]T](converter AggConverter, m mapping, typ
 
 					// one := all.Index(i)
 					if isPointer {
-						all.Index(i).Set(one.Addr())
+						allVal.Index(i).Set(one.Addr())
 					} else {
-						all.Index(i).Set(one)
+						allVal.Index(i).Set(one)
 					}
 				}
 			}
 
-			return all.Interface().(Ts), nil
+			return all, nil
 		}
 	}
 }

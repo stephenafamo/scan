@@ -401,8 +401,8 @@ func TestAggStructMapper(t *testing.T) {
 
 type defaultConverter struct{}
 
-func (d defaultConverter) ConvertToAgg(typ reflect.Type) reflect.Type {
-	return reflect.SliceOf(typ)
+func (d defaultConverter) ConvertToAgg(typ reflect.Type) reflect.Value {
+	return reflect.New(reflect.SliceOf(typ))
 }
 
 func (d defaultConverter) ConvertFromAgg(val reflect.Value) reflect.Value {
