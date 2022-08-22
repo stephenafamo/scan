@@ -1,6 +1,7 @@
 package scan
 
 import (
+	"fmt"
 	"reflect"
 )
 
@@ -40,7 +41,7 @@ func ValueCallback(v *Values, name string, f func() reflect.Value) reflect.Value
 	return v.getRef(name)
 }
 
-func newValues(r Rows) (*Values, error) {
+func newValues(r Rows, allowUnknown bool) (*Values, error) {
 	cols, err := r.Columns()
 	if err != nil {
 		return nil, err
@@ -69,12 +70,39 @@ type Values struct {
 	types         map[string]reflect.Type
 	pointerGetter map[string]func() reflect.Value
 	scanned       []any
+	allowUnknown  bool
 }
 
 // IsRecording returns wether the values are currently in recording mode
 // When recording, calls to Get() will record the expected type
 func (v *Values) IsRecording() bool {
 	return v.recording
+}
+
+func (v *Values) startRecording() {
+	v.recording = true
+}
+
+func (v *Values) findMiddingColumns() []string {
+	var cols []string
+	for name := range v.columns {
+		if _, ok := v.types[name]; !ok {
+			cols = append(cols, name)
+		}
+	}
+
+	return cols
+}
+
+func (v *Values) stopRecording() error {
+	if !v.allowUnknown && len(v.types) != len(v.columns) {
+		missing := v.findMiddingColumns()
+		err := fmt.Errorf("No destination for columns %v", missing)
+		return createError(err, append([]string{"no destination"}, missing...)...)
+	}
+
+	v.recording = false
+	return nil
 }
 
 // To get a copy of the columns to pass to mapper generators
@@ -113,6 +141,7 @@ func (v *Values) record(name string, t reflect.Type) {
 }
 
 func (v *Values) recordCallback(name string, f func() reflect.Value) {
+	v.types[name] = f().Type()
 	v.pointerGetter[name] = f
 }
 

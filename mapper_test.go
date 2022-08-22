@@ -20,12 +20,11 @@ func toPtr[T any](v T) *T {
 type MapperTests[T any] map[string]MapperTest[T]
 
 type MapperTest[T any] struct {
-	Values           *Values
-	Prefix           string
-	AllowUnknownCols bool
-	Mapper           Mapper[T]
-	ExpectedVal      T
-	ExpectedError    error
+	Values        *Values
+	Context       map[contextKey]any
+	Mapper        Mapper[T]
+	ExpectedVal   T
+	ExpectedError error
 }
 
 // To quickly generate column definition for tests
@@ -59,11 +58,8 @@ func RunMapperTest[T any](t *testing.T, name string, tc MapperTest[T]) {
 	t.Helper()
 	t.Run(name, func(t *testing.T) {
 		ctx := context.Background()
-		if tc.Prefix != "" {
-			ctx = context.WithValue(ctx, CtxKeyStructTagPrefix, tc.Prefix)
-		}
-		if tc.AllowUnknownCols {
-			ctx = context.WithValue(ctx, CtxKeyAllowUnknownColumns, tc.AllowUnknownCols)
+		for k, v := range tc.Context {
+			ctx = context.WithValue(ctx, k, v)
 		}
 
 		m := tc.Mapper(ctx, tc.Values.columnsCopy())
@@ -195,29 +191,13 @@ func TestMapMapper(t *testing.T) {
 }
 
 func TestStructMapper(t *testing.T) {
-	RunMapperTest(t, "No destination", MapperTest[User]{
+	RunMapperTest(t, "Unknown cols permitted", MapperTest[User]{
 		Values: &Values{
 			columns: columnNames("random"),
 		},
-		Mapper:        StructMapper[User],
-		ExpectedError: createError(nil, "no destination", "random"),
-	})
-
-	RunMapperTest(t, "Unknown cols permitted with custom mapper", MapperTest[*User]{
-		Values: &Values{
-			columns: columnNames("random"),
-		},
-		Mapper:      CustomStructMapper[*User](WithAllowUnknownColumns(true)),
-		ExpectedVal: &User{},
-	})
-
-	RunMapperTest(t, "Unknown cols permitted with context", MapperTest[User]{
-		Values: &Values{
-			columns: columnNames("random"),
-		},
-		Mapper:           StructMapper[User],
-		AllowUnknownCols: true,
-		ExpectedVal:      User{},
+		Mapper:      StructMapper[User],
+		Context:     map[contextKey]any{CtxKeyAllowUnknownColumns: true},
+		ExpectedVal: User{},
 	})
 
 	RunMapperTest(t, "flat struct", MapperTest[User]{
@@ -289,14 +269,6 @@ func TestStructMapper(t *testing.T) {
 		ExpectedVal: Tagged{ID: 1, Name: "The Name"},
 	})
 
-	RunMapperTest(t, "allow unknown columns", MapperTest[*User]{
-		Values: &Values{
-			columns: columnNames("random"),
-		},
-		Mapper:      CustomStructMapper[*User](WithAllowUnknownColumns(true)),
-		ExpectedVal: &User{},
-	})
-
 	RunMapperTest(t, "custom column separator", MapperTest[Blog]{
 		Values: &Values{
 			columns: columnNames("id", "user,id", "user,name", "user,created_at"),
@@ -343,26 +315,6 @@ func TestStructMapper(t *testing.T) {
 		},
 		Mapper:      StructMapper[UserWithMapper],
 		ExpectedVal: UserWithMapper{ID: 100, Name: "@The Name"},
-	})
-
-	RunMapperTest(t, "with prefix", MapperTest[User]{
-		Values: &Values{
-			columns: columnNames("prefix--id", "prefix--name"),
-			scanned: []any{1, "The Name"},
-		},
-		Mapper:      StructMapper[User],
-		Prefix:      "prefix--",
-		ExpectedVal: User{ID: 1, Name: "The Name"},
-	})
-
-	RunMapperTest(t, "with prefix and non-prefixed column", MapperTest[User]{
-		Values: &Values{
-			columns: columnNames("id", "prefix--name"),
-			scanned: []any{1, "The Name"},
-		},
-		Mapper:      StructMapper[User],
-		Prefix:      "prefix--",
-		ExpectedVal: User{ID: 0, Name: "The Name"},
 	})
 
 	RunMapperTest(t, "with mod", MapperTest[*User]{

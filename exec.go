@@ -16,7 +16,8 @@ func One[T any](ctx context.Context, exec Queryer, m Mapper[T], sql string, args
 	}
 	defer rows.Close()
 
-	v, err := newValues(rows)
+	allowUnknown, _ := ctx.Value(CtxKeyAllowUnknownColumns).(bool)
+	v, err := newValues(rows, allowUnknown)
 	if err != nil {
 		return t, err
 	}
@@ -28,11 +29,13 @@ func One[T any](ctx context.Context, exec Queryer, m Mapper[T], sql string, args
 	genFunc := m(ctx, v.columnsCopy())
 
 	// Record the mapping
-	v.recording = true
+	v.startRecording()
 	if _, err = genFunc(v); err != nil {
 		return t, err
 	}
-	v.recording = false
+	if err := v.stopRecording(); err != nil {
+		return t, err
+	}
 
 	rows.Next()
 	if err = v.scanRow(rows); err != nil {
@@ -57,7 +60,8 @@ func All[T any](ctx context.Context, exec Queryer, m Mapper[T], sql string, args
 	}
 	defer rows.Close()
 
-	v, err := newValues(rows)
+	allowUnknown, _ := ctx.Value(CtxKeyAllowUnknownColumns).(bool)
+	v, err := newValues(rows, allowUnknown)
 	if err != nil {
 		return nil, err
 	}
@@ -69,11 +73,13 @@ func All[T any](ctx context.Context, exec Queryer, m Mapper[T], sql string, args
 	genFunc := m(ctx, v.columnsCopy())
 
 	// Record the mapping
-	v.recording = true
+	v.startRecording()
 	if _, err = genFunc(v); err != nil {
 		return nil, err
 	}
-	v.recording = false
+	if err := v.stopRecording(); err != nil {
+		return nil, err
+	}
 
 	for rows.Next() {
 		err = v.scanRow(rows)
@@ -99,7 +105,8 @@ func Cursor[T any](ctx context.Context, exec Queryer, m Mapper[T], sql string, a
 		return nil, err
 	}
 
-	v, err := newValues(rows)
+	allowUnknown, _ := ctx.Value(CtxKeyAllowUnknownColumns).(bool)
+	v, err := newValues(rows, allowUnknown)
 	if err != nil {
 		return nil, err
 	}
@@ -111,11 +118,13 @@ func Cursor[T any](ctx context.Context, exec Queryer, m Mapper[T], sql string, a
 	genFunc := m(ctx, v.columnsCopy())
 
 	// Record the mapping
-	v.recording = true
+	v.startRecording()
 	if _, err = genFunc(v); err != nil {
 		return nil, err
 	}
-	v.recording = false
+	if err := v.stopRecording(); err != nil {
+		return nil, err
+	}
 
 	return &cursor[T]{
 		r: rows,
@@ -142,7 +151,8 @@ func Collect(ctx context.Context, exec Queryer, collector func(context.Context, 
 	}
 	defer rows.Close()
 
-	v, err := newValues(rows)
+	allowUnknown, _ := ctx.Value(CtxKeyAllowUnknownColumns).(bool)
+	v, err := newValues(rows, allowUnknown)
 	if err != nil {
 		return nil, err
 	}
@@ -173,13 +183,15 @@ func Collect(ctx context.Context, exec Queryer, collector func(context.Context, 
 	}
 
 	// Record the mapping
-	v.recording = true
+	v.startRecording()
 	out := genFunc.Call([]reflect.Value{vref})
 	errI := out[len(out)-1].Interface() // if it is just nil, it may panic
 	if err != nil {
 		return nil, errI.(error)
 	}
-	v.recording = false
+	if err := v.stopRecording(); err != nil {
+		return nil, err
+	}
 
 	for rows.Next() {
 		err = v.scanRow(rows)

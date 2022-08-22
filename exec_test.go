@@ -120,6 +120,10 @@ func testQuery[T any](t *testing.T, name string, tc queryCase[T]) {
 				t.Fatalf("diff: %s", diff)
 			}
 
+			if err != nil {
+				return
+			}
+
 			var i int
 			for c.Next() {
 				v, err := c.Get()
@@ -184,6 +188,19 @@ func TestStruct(t *testing.T) {
 		mapper:    StructMapper[User],
 		expectOne: user1,
 		expectAll: []User{user1, user2},
+	})
+
+	testQuery(t, "user with unknown column", queryCase[User]{
+		columns: strstr{
+			{"id", "int64"},
+			{"name", "string"},
+			{"missing1", "int64"},
+			{"missing2", "string"},
+		},
+		rows:        rows{[]any{1, "foo", "100", "foobar"}, []any{2, "bar", "200", "barfoo"}},
+		query:       []string{"id", "name", "missing1", "missing2"},
+		mapper:      StructMapper[User],
+		expectedErr: createError(nil, "no destination", "missing1", "missing2"),
 	})
 
 	testQuery(t, "userWithMod", queryCase[*User]{

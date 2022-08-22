@@ -51,17 +51,17 @@ func aggStructMapperFrom[T any, Ts ~[]T](ctx context.Context, c cols, s structMa
 		return errorMapper[Ts](err)
 	}
 
-	return aggMapperFromMapping[T, Ts](converter, mapping, typ, isPointer, s.allowUnknownColumns)(ctx, c)
+	return aggMapperFromMapping[T, Ts](converter, mapping, typ, isPointer)(ctx, c)
 }
 
-func aggMapperFromMapping[T any, Ts ~[]T](converter AggConverter, m mapping, typ reflect.Type, isPointer, allowUnknown bool) func(context.Context, cols) func(*Values) (Ts, error) {
+func aggMapperFromMapping[T any, Ts ~[]T](converter AggConverter, m mapping, typ reflect.Type, isPointer bool) func(context.Context, cols) func(*Values) (Ts, error) {
 	if isPointer {
 		typ = typ.Elem()
 	}
 
 	return func(ctx context.Context, c cols) func(*Values) (Ts, error) {
 		// Filter the mapping so we only ask for the available columns
-		filtered, err := filterColumns(ctx, c, m, allowUnknown)
+		filtered, err := filterColumns(ctx, c, m)
 		if err != nil {
 			return errorMapper[Ts](err)
 		}

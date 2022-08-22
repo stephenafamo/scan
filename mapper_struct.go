@@ -63,7 +63,7 @@ func structMapperFrom[T any](ctx context.Context, c cols, s structMapper) func(*
 		return errorMapper[T](err)
 	}
 
-	return mapperFromMapping[T](mapping, typ, isPointer, s.allowUnknownColumns)(ctx, c)
+	return mapperFromMapping[T](mapping, typ, isPointer)(ctx, c)
 }
 
 // Check if there are any errors, and returns if it is a pointer or not
@@ -252,24 +252,14 @@ func WithScannableTypes(scannableTypes ...interface{}) MappingOption {
 	}
 }
 
-// WithAllowUnknownColumns allows the scanner to ignore db columns that doesn't exist at the destination.
-// The default function is to throw an error when a db column ain't found at the destination.
-func WithAllowUnknownColumns(allowUnknownColumns bool) MappingOption {
-	return func(api *structMapper) error {
-		api.allowUnknownColumns = allowUnknownColumns
-		return nil
-	}
-}
-
 // structMapper is the core type in dbscan. It implements all the logic and exposes functionality available in the package.
 // With structMapper type users can create a custom structMapper instance and override default settings hence configure dbscan.
 type structMapper struct {
-	structTagKey        string
-	columnSeparator     string
-	fieldMapperFn       NameMapperFunc
-	scannableTypes      []reflect.Type
-	allowUnknownColumns bool
-	maxDepth            int
+	structTagKey    string
+	columnSeparator string
+	fieldMapperFn   NameMapperFunc
+	scannableTypes  []reflect.Type
+	maxDepth        int
 }
 
 func (s structMapper) getMapping(typ reflect.Type) (mapping, error) {
@@ -378,10 +368,7 @@ func (s structMapper) setMappings(typ reflect.Type, prefix string, v visited, m 
 	}
 }
 
-func filterColumns(ctx context.Context, c cols, m mapping, allowUnknown bool) (mapping, error) {
-	ctxAllowCols, _ := ctx.Value(CtxKeyAllowUnknownColumns).(bool)
-	allowUnknown = allowUnknown || ctxAllowCols
-
+func filterColumns(ctx context.Context, c cols, m mapping) (mapping, error) {
 	prefix, _ := ctx.Value(CtxKeyStructTagPrefix).(string)
 
 	// Filter the mapping so we only ask for the available columns
@@ -398,10 +385,6 @@ func filterColumns(ctx context.Context, c cols, m mapping, allowUnknown bool) (m
 
 		v, ok := m[key]
 		if !ok {
-			if !allowUnknown {
-				err := fmt.Errorf("No destination for column %q", name)
-				return nil, createError(err, "no destination", name)
-			}
 			continue
 		}
 
@@ -411,14 +394,14 @@ func filterColumns(ctx context.Context, c cols, m mapping, allowUnknown bool) (m
 	return filtered, nil
 }
 
-func mapperFromMapping[T any](m mapping, typ reflect.Type, isPointer, allowUnknown bool) func(context.Context, cols) func(*Values) (T, error) {
+func mapperFromMapping[T any](m mapping, typ reflect.Type, isPointer bool) func(context.Context, cols) func(*Values) (T, error) {
 	if isPointer {
 		typ = typ.Elem()
 	}
 
 	return func(ctx context.Context, c cols) func(*Values) (T, error) {
 		// Filter the mapping so we only ask for the available columns
-		filtered, err := filterColumns(ctx, c, m, allowUnknown)
+		filtered, err := filterColumns(ctx, c, m)
 		if err != nil {
 			return errorMapper[T](err)
 		}
@@ -456,10 +439,9 @@ func mapperFromMapping[T any](m mapping, typ reflect.Type, isPointer, allowUnkno
 
 //nolint:gochecknoglobals
 var defaultStructMapper = structMapper{
-	structTagKey:        "db",
-	columnSeparator:     ".",
-	fieldMapperFn:       snakeCaseFieldFunc,
-	scannableTypes:      []reflect.Type{reflect.TypeOf((*sql.Scanner)(nil)).Elem()},
-	allowUnknownColumns: false,
-	maxDepth:            3,
+	structTagKey:    "db",
+	columnSeparator: ".",
+	fieldMapperFn:   snakeCaseFieldFunc,
+	scannableTypes:  []reflect.Type{reflect.TypeOf((*sql.Scanner)(nil)).Elem()},
+	maxDepth:        3,
 }
