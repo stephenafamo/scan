@@ -27,15 +27,22 @@ var CtxKeyAllowUnknownColumns contextKey = "allow unknown columns"
 // CtxKeyMapperMods should be set to []MapperModFunc
 var CtxKeyMapperMods contextKey = "mapper mod"
 
+type mappingOptions struct{}
+
 // Uses reflection to create a mapping function for a struct type
 // using the default options
-func StructMapper[T any]() Mapper[T] {
-	return CustomStructMapper[T](defaultStructMapper)
+func StructMapper[T any](opts ...MappingOption) Mapper[T] {
+	return CustomStructMapper[T](defaultStructMapper, opts...)
 }
 
 // Uses reflection to create a mapping function for a struct type
 // using with custom options
-func CustomStructMapper[T any](src StructMapperSource) Mapper[T] {
+func CustomStructMapper[T any](src StructMapperSource, optMod ...MappingOption) Mapper[T] {
+	opts := mappingOptions{}
+	for _, o := range optMod {
+		o(&opts)
+	}
+
 	return func(ctx context.Context, c cols) func(*Values) (T, error) {
 		return structMapperFrom[T](ctx, c, src)
 	}
@@ -172,7 +179,7 @@ func snakeCaseFieldFunc(str string) string {
 }
 
 // NewStructMapperSource creates a new Mapping object with provided list of options.
-func NewStructMapperSource(opts ...MappingOption) (StructMapperSource, error) {
+func NewStructMapperSource(opts ...MappingSourceOption) (StructMapperSource, error) {
 	src := defaultStructMapper
 	for _, o := range opts {
 		if err := o(&src); err != nil {
@@ -182,12 +189,15 @@ func NewStructMapperSource(opts ...MappingOption) (StructMapperSource, error) {
 	return src, nil
 }
 
-// MappingOption is a function type that changes Mapping configuration.
-type MappingOption func(src *StructMapperSource) error
+// MappingSourceOption are options to modify how a struct's mappings are interpreted
+type MappingSourceOption func(src *StructMapperSource) error
+
+// MappingeOption is a function type that changes how the mapper is generated
+type MappingOption func(src *mappingOptions) error
 
 // WithStructTagKey allows to use a custom struct tag key.
 // The default tag key is `db`.
-func WithStructTagKey(tagKey string) MappingOption {
+func WithStructTagKey(tagKey string) MappingSourceOption {
 	return func(src *StructMapperSource) error {
 		src.structTagKey = tagKey
 		return nil
@@ -196,7 +206,7 @@ func WithStructTagKey(tagKey string) MappingOption {
 
 // WithColumnSeparator allows to use a custom separator character for column name when combining nested structs.
 // The default separator is "." character.
-func WithColumnSeparator(separator string) MappingOption {
+func WithColumnSeparator(separator string) MappingSourceOption {
 	return func(src *StructMapperSource) error {
 		src.columnSeparator = separator
 		return nil
@@ -205,7 +215,7 @@ func WithColumnSeparator(separator string) MappingOption {
 
 // WithFieldNameMapper allows to use a custom function to map field name to column names.
 // The default function maps fields names to "snake_case"
-func WithFieldNameMapper(mapperFn NameMapperFunc) MappingOption {
+func WithFieldNameMapper(mapperFn NameMapperFunc) MappingSourceOption {
 	return func(src *StructMapperSource) error {
 		src.fieldMapperFn = mapperFn
 		return nil
@@ -226,7 +236,7 @@ func WithFieldNameMapper(mapperFn NameMapperFunc) MappingOption {
 //
 // You can pass it to dbscan this way:
 // dbscan.WithScannableTypes((*Scanner)(nil)).
-func WithScannableTypes(scannableTypes ...interface{}) MappingOption {
+func WithScannableTypes(scannableTypes ...interface{}) MappingSourceOption {
 	return func(src *StructMapperSource) error {
 		for _, stOpt := range scannableTypes {
 			st := reflect.TypeOf(stOpt)

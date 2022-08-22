@@ -76,7 +76,7 @@ func RunMapperTest[T any](t *testing.T, name string, tc MapperTest[T]) {
 
 type CustomStructMapperTest[T any] struct {
 	MapperTest[T]
-	Options []MappingOption
+	Options []MappingSourceOption
 }
 
 func RunCustomStructMapperTest[T any](t *testing.T, name string, tc CustomStructMapperTest[T]) {
@@ -303,7 +303,7 @@ func TestStructMapper(t *testing.T) {
 				},
 			},
 		},
-		Options: []MappingOption{WithColumnSeparator(",")},
+		Options: []MappingSourceOption{WithColumnSeparator(",")},
 	})
 
 	RunCustomStructMapperTest(t, "custom name mapper", CustomStructMapperTest[Blog]{
@@ -320,7 +320,7 @@ func TestStructMapper(t *testing.T) {
 				},
 			},
 		},
-		Options: []MappingOption{WithFieldNameMapper(strings.ToUpper)},
+		Options: []MappingSourceOption{WithFieldNameMapper(strings.ToUpper)},
 	})
 
 	RunCustomStructMapperTest(t, "custom tag", CustomStructMapperTest[Tagged]{
@@ -331,7 +331,7 @@ func TestStructMapper(t *testing.T) {
 			},
 			ExpectedVal: Tagged{ID: 1, Name: "The Name"},
 		},
-		Options: []MappingOption{WithStructTagKey("custom")},
+		Options: []MappingSourceOption{WithStructTagKey("custom")},
 	})
 
 	RunMapperTest(t, "custom tag", MapperTest[UserWithMapper]{
