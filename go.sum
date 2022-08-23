@@ -1,4 +1,4 @@
 github.com/google/go-cmp v0.5.8 h1:e6P7q2lk1O+qJJb4BtCQXlK8vWEO8V1ZeuEdJNOqZyg=
 github.com/google/go-cmp v0.5.8/go.mod h1:17dUlkBOakJ0+DkrSSNjCkIjxS6bF9zb3elmeNGIjoY=
-github.com/stephenafamo/fakedb v0.0.0-20220805120735-35a21624803f h1:rAkxfJo5lnBYDB1W+WPsZx3AgvxcBJFxkWPLqafKctI=
-github.com/stephenafamo/fakedb v0.0.0-20220805120735-35a21624803f/go.mod h1:bM3Vmw1IakoaXocHmMIGgJFYob0vuK+CFWiJHQvz0jQ=
+github.com/stephenafamo/fakedb v0.0.0-20220823001843-60de746ea4b1 h1:mJcvTaBX3gmKTK34fLMkfsWmYGkBevD2GtEXV1vakYI=
+github.com/stephenafamo/fakedb v0.0.0-20220823001843-60de746ea4b1/go.mod h1:bM3Vmw1IakoaXocHmMIGgJFYob0vuK+CFWiJHQvz0jQ=

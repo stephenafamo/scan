@@ -87,6 +87,10 @@ func (m *MappingError) Unwrap() error {
 
 // Error implements the error interface
 func (m *MappingError) Error() string {
+	if m.cause == nil {
+		return ""
+	}
+
 	return m.cause.Error()
 }
 

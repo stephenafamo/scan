@@ -14,7 +14,7 @@ import (
 	_ "github.com/stephenafamo/fakedb"
 )
 
-func createDB(tb testing.TB, cols [][2]string) *sql.DB {
+func createDB(tb testing.TB, cols [][2]string) (*sql.DB, func()) {
 	tb.Helper()
 	db, err := sql.Open("test", "foo")
 	if err != nil {
@@ -36,7 +36,9 @@ func createDB(tb testing.TB, cols [][2]string) *sql.DB {
 	}
 
 	exec(tb, db, b.String())
-	return db
+	return db, func() {
+		exec(tb, db, fmt.Sprintf("DROP|%s", tb.Name()))
+	}
 }
 
 func exec(tb testing.TB, exec *sql.DB, query string, args ...interface{}) sql.Result {
@@ -87,7 +89,9 @@ func testQuery[T any](t *testing.T, name string, tc queryCase[T]) {
 			ctx = context.WithValue(ctx, CtxKeyMapperMods, tc.mapperMods)
 		}
 
-		ex := createDB(t, tc.columns)
+		ex, clean := createDB(t, tc.columns)
+		defer clean()
+
 		insert(t, ex, colSliceFromMap(tc.columns), tc.rows...)
 		query := createQuery(t, tc.query)
 
@@ -333,7 +337,9 @@ func testCollect(t *testing.T, name string, tc collectCase) {
 	ctx := context.Background()
 
 	t.Run(name, func(t *testing.T) {
-		ex := createDB(t, tc.columns)
+		ex, clean := createDB(t, tc.columns)
+		defer clean()
+
 		insert(t, ex, colSliceFromMap(tc.columns), tc.rows...)
 		query := createQuery(t, tc.query)
 

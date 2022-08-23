@@ -83,20 +83,29 @@ func (v *Values) startRecording() {
 	v.recording = true
 }
 
-func (v *Values) findMiddingColumns() []string {
-	var cols []string
-	for name := range v.columns {
+func (v *Values) findMissingColumns() []string {
+	cols := make([]string, len(v.columns))
+
+	for name, index := range v.columns {
 		if _, ok := v.types[name]; !ok {
-			cols = append(cols, name)
+			cols[index] = name // to preserve order
 		}
 	}
 
-	return cols
+	// Remvoe empty strings
+	filtered := make([]string, 0)
+	for _, v := range cols {
+		if v != "" {
+			filtered = append(filtered, v)
+		}
+	}
+
+	return filtered
 }
 
 func (v *Values) stopRecording() error {
 	if !v.allowUnknown && len(v.types) != len(v.columns) {
-		missing := v.findMiddingColumns()
+		missing := v.findMissingColumns()
 		err := fmt.Errorf("No destination for columns %v", missing)
 		return createError(err, append([]string{"no destination"}, missing...)...)
 	}
