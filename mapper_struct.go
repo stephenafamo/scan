@@ -16,18 +16,29 @@ var (
 	ctxTyp  = reflect.TypeOf((*context.Context)(nil)).Elem()
 )
 
-type contextKey string
+type TypeConverter interface {
+	// ConvertType modifies the type of the struct
+	ConvertType(reflect.Type) reflect.Value
 
-// CtxKeyStructTagPrefix is used to add a prefix to the desired field for struct mapping
-var CtxKeyStructTagPrefix contextKey = "struct tag prefix"
+	// OriginalValue retrieves the original value from the converted type
+	OriginalValue(reflect.Value) reflect.Value
+}
+
+// RowValidator is called with all the values from a row to determine if the row is valid
+// if it is not, the zero type for that row is returned
+type RowValidator = func(map[string]reflect.Value) bool
+
+type contextKey string
 
 // CtxKeyAllowUnknownColumns makes it possible to allow unknown columns using the context
 var CtxKeyAllowUnknownColumns contextKey = "allow unknown columns"
 
-// CtxKeyMapperMods should be set to []MapperModFunc
-var CtxKeyMapperMods contextKey = "mapper mod"
-
-type mappingOptions struct{}
+type mappingOptions struct {
+	typeConverter   TypeConverter
+	rowValidator    RowValidator
+	mapperMods      []MapperMod
+	structTagPrefix string
+}
 
 // Uses reflection to create a mapping function for a struct type
 // using the default options
@@ -43,12 +54,18 @@ func CustomStructMapper[T any](src StructMapperSource, optMod ...MappingOption) 
 		o(&opts)
 	}
 
-	return func(ctx context.Context, c cols) func(*Values) (T, error) {
-		return structMapperFrom[T](ctx, c, src)
+	mod := func(ctx context.Context, c cols) func(*Values) (T, error) {
+		return structMapperFrom[T](ctx, c, src, opts)
 	}
+
+	if len(opts.mapperMods) > 0 {
+		mod = Mod(mod, opts.mapperMods...)
+	}
+
+	return mod
 }
 
-func structMapperFrom[T any](ctx context.Context, c cols, s StructMapperSource) func(*Values) (T, error) {
+func structMapperFrom[T any](ctx context.Context, c cols, s StructMapperSource, opts mappingOptions) func(*Values) (T, error) {
 	var x T
 	typ := reflect.TypeOf(x)
 
@@ -66,7 +83,7 @@ func structMapperFrom[T any](ctx context.Context, c cols, s StructMapperSource) 
 		return errorMapper[T](err)
 	}
 
-	return mapperFromMapping[T](mapping, typ, isPointer)(ctx, c)
+	return mapperFromMapping[T](mapping, typ, isPointer, opts)(ctx, c)
 }
 
 // Check if there are any errors, and returns if it is a pointer or not
@@ -189,11 +206,34 @@ func NewStructMapperSource(opts ...MappingSourceOption) (StructMapperSource, err
 	return src, nil
 }
 
+// MappingeOption is a function type that changes how the mapper is generated
+type MappingOption func(*mappingOptions)
+
+// WithRowValidator sets the [RowValidator] for the struct mapper
+// after scanning all values in a row, they are passed to the RowValidator
+// if it returns false, the zero value for that row is returned
+func WithRowValidator(rv RowValidator) MappingOption {
+	return func(opt *mappingOptions) {
+		opt.rowValidator = rv
+	}
+}
+
+// TypeConverter sets the [TypeConverter] for the struct mapper
+// it is called to modify the type of a column and get the original value back
+func WithTypeConverter(tc TypeConverter) MappingOption {
+	return func(opt *mappingOptions) {
+		opt.typeConverter = tc
+	}
+}
+
+func WithStructTagPrefix(prefix string) MappingOption {
+	return func(opt *mappingOptions) {
+		opt.structTagPrefix = prefix
+	}
+}
+
 // MappingSourceOption are options to modify how a struct's mappings are interpreted
 type MappingSourceOption func(src *StructMapperSource) error
-
-// MappingeOption is a function type that changes how the mapper is generated
-type MappingOption func(src *mappingOptions) error
 
 // WithStructTagKey allows to use a custom struct tag key.
 // The default tag key is `db`.
@@ -374,9 +414,7 @@ func (s StructMapperSource) setMappings(typ reflect.Type, prefix string, v visit
 	}
 }
 
-func filterColumns(ctx context.Context, c cols, m mapping) (mapping, error) {
-	prefix, _ := ctx.Value(CtxKeyStructTagPrefix).(string)
-
+func filterColumns(ctx context.Context, c cols, m mapping, prefix string) (mapping, error) {
 	// Filter the mapping so we only ask for the available columns
 	filtered := make(mapping)
 	for name := range c {
@@ -400,21 +438,42 @@ func filterColumns(ctx context.Context, c cols, m mapping) (mapping, error) {
 	return filtered, nil
 }
 
-func mapperFromMapping[T any](m mapping, typ reflect.Type, isPointer bool) func(context.Context, cols) func(*Values) (T, error) {
+func mapperFromMapping[T any](m mapping, typ reflect.Type, isPointer bool, opts mappingOptions) func(context.Context, cols) func(*Values) (T, error) {
 	if isPointer {
 		typ = typ.Elem()
 	}
 
 	return func(ctx context.Context, c cols) func(*Values) (T, error) {
 		// Filter the mapping so we only ask for the available columns
-		filtered, err := filterColumns(ctx, c, m)
+		filtered, err := filterColumns(ctx, c, m, opts.structTagPrefix)
 		if err != nil {
 			return errorMapper[T](err)
 		}
 
-		return func(v *Values) (T, error) {
-			row := reflect.New(typ).Elem()
+		typeConverter, hasTypeConverter := opts.typeConverter, opts.typeConverter != nil
+		rowValidator, hasRowValidator := opts.rowValidator, opts.rowValidator != nil
 
+		return func(v *Values) (T, error) {
+			rowVals := make(map[string]reflect.Value, len(filtered))
+
+			for name, info := range filtered {
+				ft := typ.FieldByIndex(info.position).Type
+				if hasTypeConverter {
+					rowVals[name] = ValueCallback(v, name, func() reflect.Value {
+						return typeConverter.ConvertType(ft)
+					})
+					continue
+				}
+
+				rowVals[name] = ReflectedValue(v, name, ft)
+			}
+
+			if hasRowValidator && !rowValidator(rowVals) {
+				var zero T
+				return zero, nil
+			}
+
+			row := reflect.New(typ).Elem()
 			for name, info := range filtered {
 				for _, v := range info.init {
 					pv := row.FieldByIndex(v)
@@ -425,8 +484,13 @@ func mapperFromMapping[T any](m mapping, typ reflect.Type, isPointer bool) func(
 					pv.Set(reflect.New(pv.Type().Elem()))
 				}
 
+				val := rowVals[name]
+				if hasTypeConverter {
+					fmt.Println("converting back...")
+					val = typeConverter.OriginalValue(val)
+				}
+
 				fv := row.FieldByIndex(info.position)
-				val := ReflectedValue(v, name, fv.Type())
 				if info.isPointer {
 					fv.Elem().Set(val)
 				} else {

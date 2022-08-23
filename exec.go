@@ -22,10 +22,6 @@ func One[T any](ctx context.Context, exec Queryer, m Mapper[T], sql string, args
 		return t, err
 	}
 
-	if mapperMods, ok := ctx.Value(CtxKeyMapperMods).([]MapperMod); ok {
-		m = Mod(m, mapperMods...)
-	}
-
 	genFunc := m(ctx, v.columnsCopy())
 
 	// Record the mapping
@@ -64,10 +60,6 @@ func All[T any](ctx context.Context, exec Queryer, m Mapper[T], sql string, args
 	v, err := newValues(rows, allowUnknown)
 	if err != nil {
 		return nil, err
-	}
-
-	if mapperMods, ok := ctx.Value(CtxKeyMapperMods).([]MapperMod); ok {
-		m = Mod(m, mapperMods...)
 	}
 
 	genFunc := m(ctx, v.columnsCopy())
@@ -109,10 +101,6 @@ func Cursor[T any](ctx context.Context, exec Queryer, m Mapper[T], sql string, a
 	v, err := newValues(rows, allowUnknown)
 	if err != nil {
 		return nil, err
-	}
-
-	if mapperMods, ok := ctx.Value(CtxKeyMapperMods).([]MapperMod); ok {
-		m = Mod(m, mapperMods...)
 	}
 
 	genFunc := m(ctx, v.columnsCopy())

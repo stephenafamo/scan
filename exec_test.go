@@ -86,7 +86,7 @@ func testQuery[T any](t *testing.T, name string, tc queryCase[T]) {
 	t.Run(name, func(t *testing.T) {
 		ctx := context.Background()
 		if len(tc.mapperMods) > 0 {
-			ctx = context.WithValue(ctx, CtxKeyMapperMods, tc.mapperMods)
+			tc.mapper = Mod(tc.mapper, tc.mapperMods...)
 		}
 
 		ex, clean := createDB(t, tc.columns)

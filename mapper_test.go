@@ -343,6 +343,24 @@ func TestStructMapper(t *testing.T) {
 		ExpectedVal: UserWithMapper{ID: 100, Name: "@The Name"},
 	})
 
+	RunMapperTest(t, "with prefix", MapperTest[User]{
+		Values: &Values{
+			columns: columnNames("prefix--id", "prefix--name"),
+			scanned: []any{1, "The Name"},
+		},
+		Mapper:      StructMapper[User](WithStructTagPrefix("prefix--")),
+		ExpectedVal: User{ID: 1, Name: "The Name"},
+	})
+
+	RunMapperTest(t, "with prefix and non-prefixed column", MapperTest[User]{
+		Values: &Values{
+			columns: columnNames("id", "prefix--name"),
+			scanned: []any{1, "The Name"},
+		},
+		Mapper:      StructMapper[User](WithStructTagPrefix("prefix--")),
+		ExpectedVal: User{ID: 0, Name: "The Name"},
+	})
+
 	RunMapperTest(t, "with mod", MapperTest[*User]{
 		Values: &Values{
 			columns: columnNames("id", "name"),
