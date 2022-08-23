@@ -486,7 +486,6 @@ func mapperFromMapping[T any](m mapping, typ reflect.Type, isPointer bool, opts 
 
 				val := rowVals[name]
 				if hasTypeConverter {
-					fmt.Println("converting back...")
 					val = typeConverter.OriginalValue(val)
 				}
 
