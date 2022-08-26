@@ -453,21 +453,28 @@ func mapperFromMapping[T any](m mapping, typ reflect.Type, isPointer bool, opts 
 		typeConverter, hasTypeConverter := opts.typeConverter, opts.typeConverter != nil
 		rowValidator, hasRowValidator := opts.rowValidator, opts.rowValidator != nil
 
-		rowTyps := make(map[string]reflect.Type, len(filtered))
+		rowValFucs := make(map[string]func() reflect.Value)
+		rowTyps := make(map[string]reflect.Type)
+
 		for name, info := range filtered {
 			ft := typ.FieldByIndex(info.position).Type
 			if hasTypeConverter {
-				rowTyps[name] = typeConverter.ConvertType(ft).Type()
-				continue
+				rowValFucs[name] = func() reflect.Value {
+					return typeConverter.ConvertType(ft)
+				}
+			} else {
+				rowTyps[name] = ft
 			}
-
-			rowTyps[name] = ft
 		}
 
 		return func(v *Values) (T, error) {
 			rowVals := make(map[string]reflect.Value, len(filtered))
-			for name, ft := range rowTyps {
-				rowVals[name] = ReflectedValue(v, name, ft)
+			for name := range filtered {
+				if hasTypeConverter {
+					rowVals[name] = ValueCallback(v, name, rowValFucs[name])
+				} else {
+					rowVals[name] = ReflectedValue(v, name, rowTyps[name])
+				}
 			}
 
 			if hasRowValidator && !rowValidator(rowVals) {
