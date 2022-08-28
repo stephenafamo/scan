@@ -358,7 +358,7 @@ func (s StructMapperSource) setMappings(typ reflect.Type, prefix string, v visit
 		}
 
 		// Skip columns that have the tag "-"
-		tag := field.Tag.Get(s.structTagKey)
+		tag := strings.Split(field.Tag.Get(s.structTagKey), ",")[0]
 		if tag == "-" {
 			continue
 		}
