@@ -2,15 +2,16 @@ package scan
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"reflect"
 )
 
 // One scans a single row from the query and maps it to T using a [Queryer]
-func One[T any](ctx context.Context, exec Queryer, m Mapper[T], sql string, args ...any) (T, error) {
+func One[T any](ctx context.Context, exec Queryer, m Mapper[T], query string, args ...any) (T, error) {
 	var t T
 
-	rows, err := exec.QueryContext(ctx, sql, args...)
+	rows, err := exec.QueryContext(ctx, query, args...)
 	if err != nil {
 		return t, err
 	}
@@ -33,7 +34,10 @@ func One[T any](ctx context.Context, exec Queryer, m Mapper[T], sql string, args
 		return t, err
 	}
 
-	rows.Next()
+	if !rows.Next() {
+		return t, sql.ErrNoRows
+	}
+
 	if err = v.scanRow(rows); err != nil {
 		return t, err
 	}
@@ -47,10 +51,10 @@ func One[T any](ctx context.Context, exec Queryer, m Mapper[T], sql string, args
 }
 
 // All scans all rows from the query and returns a slice []T of all rows using a [Queryer]
-func All[T any](ctx context.Context, exec Queryer, m Mapper[T], sql string, args ...any) ([]T, error) {
+func All[T any](ctx context.Context, exec Queryer, m Mapper[T], query string, args ...any) ([]T, error) {
 	var results []T
 
-	rows, err := exec.QueryContext(ctx, sql, args...)
+	rows, err := exec.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -91,8 +95,8 @@ func All[T any](ctx context.Context, exec Queryer, m Mapper[T], sql string, args
 }
 
 // Cursor returns a cursor that works similar to *sql.Rows
-func Cursor[T any](ctx context.Context, exec Queryer, m Mapper[T], sql string, args ...any) (ICursor[T], error) {
-	rows, err := exec.QueryContext(ctx, sql, args...)
+func Cursor[T any](ctx context.Context, exec Queryer, m Mapper[T], query string, args ...any) (ICursor[T], error) {
+	rows, err := exec.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -132,8 +136,8 @@ var (
 // func(context.Context, map[string]int) func(*Values) (t1, t2, ..., error)
 // The returned slice contains values like this
 // {[]t1, []t2}
-func Collect(ctx context.Context, exec Queryer, collector func(context.Context, cols) any, sql string, args ...any) ([]any, error) {
-	rows, err := exec.QueryContext(ctx, sql, args...)
+func Collect(ctx context.Context, exec Queryer, collector func(context.Context, cols) any, query string, args ...any) ([]any, error) {
+	rows, err := exec.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
