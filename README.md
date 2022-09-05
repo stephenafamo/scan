@@ -36,7 +36,7 @@ func main() {
     // []int{1, 2, 3, 4, 5}
     userIDs, _ := stdscan.All(ctx, db, scan.SingleColumnMapper[int], "SELECT id FROM users")
     // []User{...}
-    users, _ := stdscan.All(ctx, db, scan.StructMapper[User], `SELECT id, name, email, age FROM users`)
+    users, _ := stdscan.All(ctx, db, scan.StructMapper[User](), `SELECT id, name, email, age FROM users`)
 
     // []any{
     //     []int{1, 2, 3, 4, 5},
