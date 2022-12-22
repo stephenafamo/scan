@@ -6,7 +6,7 @@ import (
 )
 
 // Value retrieves a value from [Values] with the specified name
-// if [Values.IsRecording()] is true, it will ALWAYS return the zero value
+// if [Values.IsRecording] returns true, it will ALWAYS return the zero value
 // of that type
 // When not recording, it will panic if the requested type does not match
 // what was recorded
