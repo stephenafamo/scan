@@ -56,7 +56,9 @@ func RunMapperTests[T any](t *testing.T, cases MapperTests[T]) {
 
 func RunMapperTest[T any](t *testing.T, name string, tc MapperTest[T]) {
 	t.Helper()
-	t.Run(name, func(t *testing.T) {
+
+	f := func(t *testing.T) {
+		t.Helper()
 		ctx := context.Background()
 		for k, v := range tc.Context {
 			ctx = context.WithValue(ctx, k, v)
@@ -71,7 +73,13 @@ func RunMapperTest[T any](t *testing.T, name string, tc MapperTest[T]) {
 		if diff := cmp.Diff(tc.ExpectedVal, val); diff != "" {
 			t.Fatalf("diff: %s", diff)
 		}
-	})
+	}
+
+	if name == "" {
+		f(t)
+	} else {
+		t.Run(name, f)
+	}
 }
 
 type CustomStructMapperTest[T any] struct {
@@ -382,35 +390,59 @@ func TestStructMapper(t *testing.T) {
 }
 
 func TestMappable(t *testing.T) {
-	testMappable[noMatchingMethod](t, false)
-	testMappable[methodWithWrongSignature](t, false)
+	testMappable(t, false, noMatchingMethod{})
+	testMappable(t, false, methodWithWrongSignature{})
 
-	testMappable[mappableVV](t, true)
-	testMappable[*mappableVV](t, true)
+	testMappable(t, true, mappableVV{ID: 100})
+	testMappable(t, true, &mappableVV{ID: 100})
 
-	testMappable[mappableVP](t, true)
-	testMappable[*mappableVP](t, true)
+	testMappable(t, true, mappableVP{ID: 100})
+	testMappable(t, true, &mappableVP{ID: 100})
 
-	testMappable[mappablePV](t, true)
-	testMappable[*mappablePV](t, true)
+	testMappable(t, true, mappablePV{ID: 100})
+	testMappable(t, true, &mappablePV{ID: 100})
 
-	testMappable[mappablePP](t, true)
-	testMappable[*mappablePP](t, true)
+	testMappable(t, true, mappablePP{ID: 100})
+	testMappable(t, true, &mappablePP{ID: 100})
+
+	t.Run("mappable error", func(t *testing.T) {
+		_, gotten := mappable[mappableBad](reflect.TypeOf(mappableBad{}), false)
+		if !gotten {
+			t.Fatalf("Expected mappableErr to be mappable but was not")
+		}
+		if gotten {
+			RunMapperTest(t, "", MapperTest[mappableBad]{
+				Values: &Values{
+					columns: columnNames("id"),
+					scanned: []any{1},
+				},
+				Mapper:        StructMapper[mappableBad](),
+				ExpectedError: createError(errors.New("an error")),
+			})
+		}
+	})
 }
 
-func testMappable[T any](t *testing.T, expected bool) {
+func testMappable[T any](t *testing.T, expected bool, expectedVal T) {
 	t.Helper()
 
 	var x T
 	typ := reflect.TypeOf(x)
 
 	t.Run(typ.String(), func(t *testing.T) {
-		f, gotten := mappable[T](typ, typ.Kind() == reflect.Pointer)
+		_, gotten := mappable[T](typ, typ.Kind() == reflect.Pointer)
 		if expected != gotten {
 			t.Fatalf("Expected mappable(%T) to be %t but was %t", x, expected, gotten)
 		}
 		if gotten {
-			f(context.Background(), nil)
+			RunMapperTest(t, "", MapperTest[T]{
+				Values: &Values{
+					columns: columnNames("id"),
+					scanned: []any{1},
+				},
+				Mapper:      StructMapper[T](),
+				ExpectedVal: expectedVal,
+			})
 		}
 	})
 }
@@ -483,29 +515,54 @@ func (methodWithWrongSignature) MapValues(cols) func(methodWithWrongSignature, e
 }
 
 // value to value
-type mappableVV struct{}
+type mappableVV struct{ ID int }
 
 func (mappableVV) MapValues(context.Context, cols) func(*Values) (mappableVV, error) {
-	return nil
+	return func(v *Values) (mappableVV, error) {
+		return mappableVV{
+			ID: Value[int](v, "id") * 100,
+		}, nil
+	}
 }
 
 // value to pointer
-type mappableVP struct{}
+type mappableVP struct{ ID int }
 
 func (mappableVP) MapValues(context.Context, cols) func(*Values) (*mappableVP, error) {
-	return nil
+	return func(v *Values) (*mappableVP, error) {
+		return &mappableVP{
+			ID: Value[int](v, "id") * 100,
+		}, nil
+	}
 }
 
 // pointer to value
-type mappablePV struct{}
+type mappablePV struct{ ID int }
 
 func (*mappablePV) MapValues(context.Context, cols) func(*Values) (mappablePV, error) {
-	return nil
+	return func(v *Values) (mappablePV, error) {
+		return mappablePV{
+			ID: Value[int](v, "id") * 100,
+		}, nil
+	}
 }
 
 // pointer to pointer
-type mappablePP struct{}
+type mappablePP struct{ ID int }
 
 func (*mappablePP) MapValues(context.Context, cols) func(*Values) (*mappablePP, error) {
-	return nil
+	return func(v *Values) (*mappablePP, error) {
+		return &mappablePP{
+			ID: Value[int](v, "id") * 100,
+		}, nil
+	}
+}
+
+// mappable that returns an error
+type mappableBad struct{ ID int }
+
+func (mappableBad) MapValues(context.Context, cols) func(*Values) (*mappableBad, error) {
+	return func(v *Values) (*mappableBad, error) {
+		return nil, createError(errors.New("an error"))
+	}
 }

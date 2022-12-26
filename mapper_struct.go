@@ -158,6 +158,8 @@ func mappable[T any](typ reflect.Type, isPointer bool) (func(context.Context, co
 		}, true
 	}
 
+	var zero T
+
 	return func(ctx context.Context, c cols) func(*Values) (T, error) {
 		f := method.Call(
 			[]reflect.Value{reflect.ValueOf(ctx), reflect.ValueOf(c)},
@@ -165,17 +167,22 @@ func mappable[T any](typ reflect.Type, isPointer bool) (func(context.Context, co
 
 		return func(v *Values) (T, error) {
 			out := f.Call(
-				[]reflect.Value{reflect.ValueOf(c)},
+				[]reflect.Value{reflect.ValueOf(v)},
 			)
 
-			val := out[0]
-			err := out[1].Interface().(error)
-
-			if pointerResp {
-				return val.Addr().Interface().(T), err
+			var err error
+			if out[1].Interface() != nil {
+				return zero, out[1].Interface().(error)
 			}
 
-			return val.Elem().Interface().(T), err
+			val := out[0]
+			if pointerResp {
+				return val.Elem().Interface().(T), err
+			}
+
+			newVal := reflect.New(t)
+			newVal.Elem().Set(val)
+			return newVal.Interface().(T), err
 		}
 	}, true
 }
