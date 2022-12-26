@@ -386,6 +386,17 @@ func TestStructMapper(t *testing.T) {
 		ExpectedVal: User{ID: 1, Name: "The Name"},
 	})
 
+	RunMapperTest(t, "with row validator", MapperTest[User]{
+		Values: &Values{
+			columns: columnNames("id", "name"),
+			scanned: []any{1, "The Name"},
+		},
+		Mapper: StructMapper[User](WithRowValidator(func(m map[string]reflect.Value) bool {
+			return false
+		})),
+		ExpectedVal: User{ID: 0, Name: ""},
+	})
+
 	RunMapperTest(t, "with mod", MapperTest[*User]{
 		Values: &Values{
 			columns: columnNames("id", "name"),
