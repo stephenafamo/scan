@@ -98,7 +98,7 @@ func testQuery[T any](t *testing.T, name string, tc queryCase[T]) {
 		queryer := stdQ{ex}
 		t.Run("one", func(t *testing.T) {
 			one, err := One(ctx, queryer, tc.mapper, query)
-			if diff := cmp.Diff(tc.expectedErr, err); diff != "" {
+			if diff := cmp.Diff(tc.expectedErr, err, cmp.Comparer(compareMappingError)); diff != "" {
 				t.Fatalf("diff: %s", diff)
 			}
 
@@ -109,7 +109,7 @@ func testQuery[T any](t *testing.T, name string, tc queryCase[T]) {
 
 		t.Run("all", func(t *testing.T) {
 			all, err := All(ctx, queryer, tc.mapper, query)
-			if diff := cmp.Diff(tc.expectedErr, err); diff != "" {
+			if diff := cmp.Diff(tc.expectedErr, err, cmp.Comparer(compareMappingError)); diff != "" {
 				t.Fatalf("diff: %s", diff)
 			}
 
@@ -120,7 +120,7 @@ func testQuery[T any](t *testing.T, name string, tc queryCase[T]) {
 
 		t.Run("cursor", func(t *testing.T) {
 			c, err := Cursor(ctx, queryer, tc.mapper, query)
-			if diff := cmp.Diff(tc.expectedErr, err); diff != "" {
+			if diff := cmp.Diff(tc.expectedErr, err, cmp.Comparer(compareMappingError)); diff != "" {
 				t.Fatalf("diff: %s", diff)
 			}
 
@@ -131,7 +131,7 @@ func testQuery[T any](t *testing.T, name string, tc queryCase[T]) {
 			var i int
 			for c.Next() {
 				v, err := c.Get()
-				if diff := cmp.Diff(tc.expectedErr, err); diff != "" {
+				if diff := cmp.Diff(tc.expectedErr, err, cmp.Comparer(compareMappingError)); diff != "" {
 					t.Fatalf("diff: %s", diff)
 				}
 

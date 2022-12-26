@@ -67,7 +67,7 @@ func RunMapperTest[T any](t *testing.T, name string, tc MapperTest[T]) {
 		m := tc.Mapper(ctx, tc.Values.columnsCopy())
 
 		val, err := m(tc.Values)
-		if diff := cmp.Diff(tc.ExpectedError, err); diff != "" {
+		if diff := cmp.Diff(tc.ExpectedError, err, cmp.Comparer(compareMappingError)); diff != "" {
 			t.Fatalf("diff: %s", diff)
 		}
 		if diff := cmp.Diff(tc.ExpectedVal, val); diff != "" {
@@ -565,4 +565,23 @@ func (mappableBad) MapValues(context.Context, cols) func(*Values) (*mappableBad,
 	return func(v *Values) (*mappableBad, error) {
 		return nil, createError(errors.New("an error"))
 	}
+}
+
+func compareMappingError(m, m2 *MappingError) bool {
+	if len(m.meta) != len(m2.meta) {
+		return false
+	}
+
+	// if no meta, the error strings should match exactly
+	if len(m.meta) == 0 {
+		return m.Error() == m2.Error()
+	}
+
+	for k := range m.meta {
+		if m.meta[k] != m2.meta[k] {
+			return false
+		}
+	}
+
+	return true
 }

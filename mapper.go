@@ -2,7 +2,6 @@ package scan
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"reflect"
 	"strconv"
@@ -92,31 +91,6 @@ func (m *MappingError) Error() string {
 	}
 
 	return m.cause.Error()
-}
-
-// Equal makes it easy to compare mapping errors
-func (m *MappingError) Equal(err error) bool {
-	var m2 *MappingError
-	if !errors.As(err, &m2) {
-		return errors.Is(m, err) || errors.Is(err, m)
-	}
-
-	if len(m.meta) != len(m2.meta) {
-		return false
-	}
-
-	// if no meta, the error strings should match exactly
-	if len(m.meta) == 0 {
-		return m.Error() == m2.Error()
-	}
-
-	for k := range m.meta {
-		if m.meta[k] != m2.meta[k] {
-			return false
-		}
-	}
-
-	return true
 }
 
 // For queries that return only one column
