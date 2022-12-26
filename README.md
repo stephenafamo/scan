@@ -1,5 +1,12 @@
 # Scan
 
+[![Test Status](https://github.com/stephenafamo/scan/actions/workflows/test.yml/badge.svg)](https://github.com/stephenafamo/scan/actions/workflows/test.yml)
+![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/stephenafamo/scan)
+[![Go Reference](https://pkg.go.dev/badge/github.com/stephenafamo/scan.svg)](https://pkg.go.dev/github.com/stephenafamo/scan)
+[![Go Report Card](https://goreportcard.com/badge/github.com/stephenafamo/scan)](https://goreportcard.com/report/github.com/stephenafamo/scan)
+![GitHub tag (latest SemVer)](https://img.shields.io/github/v/tag/stephenafamo/scan)
+[![Coverage Status](https://coveralls.io/repos/github/stephenafamo/scan/badge.svg)](https://coveralls.io/github/stephenafamo/scan)
+
 Scan provides the ability to use database/sql/rows to scan datasets directly to any defined structure.
 
 ## Reference
