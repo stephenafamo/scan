@@ -18,9 +18,11 @@ var (
 
 type TypeConverter interface {
 	// ConvertType modifies the type of the struct
+	// the method is called with the expected type of the column
 	ConvertType(reflect.Type) reflect.Value
 
 	// OriginalValue retrieves the original value from the converted type
+	// the value given is a value of the type returned by ConvertType
 	OriginalValue(reflect.Value) reflect.Value
 }
 

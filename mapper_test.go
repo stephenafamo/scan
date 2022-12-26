@@ -369,6 +369,23 @@ func TestStructMapper(t *testing.T) {
 		ExpectedVal: User{ID: 0, Name: "The Name"},
 	})
 
+	RunMapperTest(t, "with type converter", MapperTest[User]{
+		Values: &Values{
+			columns: columnNames("id", "name"),
+			scanned: []any{wrapper{1}, wrapper{"The Name"}},
+			pointerGetter: map[string]func() reflect.Value{
+				"id": func() reflect.Value {
+					return typeConverter{}.ConvertType(reflect.TypeOf(100))
+				},
+				"name": func() reflect.Value {
+					return typeConverter{}.ConvertType(reflect.TypeOf("The Name"))
+				},
+			},
+		},
+		Mapper:      StructMapper[User](WithTypeConverter(typeConverter{})),
+		ExpectedVal: User{ID: 1, Name: "The Name"},
+	})
+
 	RunMapperTest(t, "with mod", MapperTest[*User]{
 		Values: &Values{
 			columns: columnNames("id", "name"),
@@ -584,4 +601,22 @@ func compareMappingError(m, m2 *MappingError) bool {
 	}
 
 	return true
+}
+
+type wrapper struct {
+	V any
+}
+
+type typeConverter struct{}
+
+func (d typeConverter) ConvertType(typ reflect.Type) reflect.Value {
+	val := reflect.ValueOf(wrapper{
+		V: reflect.New(typ).Interface(),
+	})
+
+	return val
+}
+
+func (d typeConverter) OriginalValue(val reflect.Value) reflect.Value {
+	return val.FieldByName("V").Elem()
 }
