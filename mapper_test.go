@@ -417,6 +417,33 @@ func TestStructMapper(t *testing.T) {
 	})
 }
 
+func TestScannable(t *testing.T) {
+	type scannable interface {
+		Scan()
+	}
+
+	type BlogWithScannableUser struct {
+		ID   int
+		User ScannableUser
+	}
+
+	src, err := NewStructMapperSource(WithScannableTypes(
+		(*scannable)(nil),
+	))
+	if err != nil {
+		t.Fatalf("couldn't get mapper source: %v", err)
+	}
+
+	m, err := src.getMapping(reflect.TypeOf(BlogWithScannableUser{}))
+	if err != nil {
+		t.Fatalf("couldn't get mapping: %v", err)
+	}
+
+	if _, ok := m["user"]; !ok {
+		t.Fatal("did not mark user as scannable")
+	}
+}
+
 func TestMappable(t *testing.T) {
 	testMappable(t, false, noMatchingMethod{})
 	testMappable(t, false, methodWithWrongSignature{})
@@ -518,6 +545,14 @@ type Blog struct {
 type Tagged struct {
 	ID   int    `db:"tag_id" custom:"custom_id"`
 	Name string `db:"tag_name" custom:"custom_name"`
+}
+
+type ScannableUser struct {
+	ID   int
+	Name string
+}
+
+func (s ScannableUser) Scan() {
 }
 
 type UserWithMapper struct {

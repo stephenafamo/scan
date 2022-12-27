@@ -204,15 +204,8 @@ func snakeCaseFieldFunc(str string) string {
 	return strings.ToLower(snake)
 }
 
-// NewStructMapperSource creates a new Mapping object with provided list of options.
-func NewStructMapperSource(opts ...MappingSourceOption) (StructMapperSource, error) {
-	src := defaultStructMapper
-	for _, o := range opts {
-		if err := o(&src); err != nil {
-			return src, err
-		}
-	}
-	return src, nil
+type StructMapperSource interface {
+	getMapping(reflect.Type) (mapping, error)
 }
 
 // MappingeOption is a function type that changes how the mapper is generated
@@ -241,13 +234,24 @@ func WithStructTagPrefix(prefix string) MappingOption {
 	}
 }
 
+// NewStructMapperSource creates a new Mapping object with provided list of options.
+func NewStructMapperSource(opts ...MappingSourceOption) (mapperSourceImpl, error) {
+	src := defaultStructMapper
+	for _, o := range opts {
+		if err := o(&src); err != nil {
+			return src, err
+		}
+	}
+	return src, nil
+}
+
 // MappingSourceOption are options to modify how a struct's mappings are interpreted
-type MappingSourceOption func(src *StructMapperSource) error
+type MappingSourceOption func(src *mapperSourceImpl) error
 
 // WithStructTagKey allows to use a custom struct tag key.
 // The default tag key is `db`.
 func WithStructTagKey(tagKey string) MappingSourceOption {
-	return func(src *StructMapperSource) error {
+	return func(src *mapperSourceImpl) error {
 		src.structTagKey = tagKey
 		return nil
 	}
@@ -256,7 +260,7 @@ func WithStructTagKey(tagKey string) MappingSourceOption {
 // WithColumnSeparator allows to use a custom separator character for column name when combining nested structs.
 // The default separator is "." character.
 func WithColumnSeparator(separator string) MappingSourceOption {
-	return func(src *StructMapperSource) error {
+	return func(src *mapperSourceImpl) error {
 		src.columnSeparator = separator
 		return nil
 	}
@@ -265,7 +269,7 @@ func WithColumnSeparator(separator string) MappingSourceOption {
 // WithFieldNameMapper allows to use a custom function to map field name to column names.
 // The default function maps fields names to "snake_case"
 func WithFieldNameMapper(mapperFn NameMapperFunc) MappingSourceOption {
-	return func(src *StructMapperSource) error {
+	return func(src *mapperSourceImpl) error {
 		src.fieldMapperFn = mapperFn
 		return nil
 	}
@@ -284,9 +288,9 @@ func WithFieldNameMapper(mapperFn NameMapperFunc) MappingSourceOption {
 //	}
 //
 // You can pass it to dbscan this way:
-// dbscan.WithScannableTypes((*Scanner)(nil)).
+// scan.WithScannableTypes((*Scanner)(nil)).
 func WithScannableTypes(scannableTypes ...interface{}) MappingSourceOption {
-	return func(src *StructMapperSource) error {
+	return func(src *mapperSourceImpl) error {
 		for _, stOpt := range scannableTypes {
 			st := reflect.TypeOf(stOpt)
 			if st == nil {
@@ -307,9 +311,9 @@ func WithScannableTypes(scannableTypes ...interface{}) MappingSourceOption {
 	}
 }
 
-// StructMapperSource is the core type in dbscan. It implements all the logic and exposes functionality available in the package.
-// With StructMapperSource type users can create a custom StructMapperSource instance and override default settings hence configure dbscan.
-type StructMapperSource struct {
+// mapperSourceImpl is the core type in dbscan. It implements all the logic and exposes functionality available in the package.
+// With mapperSourceImpl type users can create a custom mapperSourceImpl instance and override default settings hence configure dbscan.
+type mapperSourceImpl struct {
 	structTagKey    string
 	columnSeparator string
 	fieldMapperFn   NameMapperFunc
@@ -317,7 +321,7 @@ type StructMapperSource struct {
 	maxDepth        int
 }
 
-func (s StructMapperSource) getMapping(typ reflect.Type) (mapping, error) {
+func (s mapperSourceImpl) getMapping(typ reflect.Type) (mapping, error) {
 	if typ == nil {
 		return nil, fmt.Errorf("Nil type passed to StructMapper")
 	}
@@ -328,7 +332,7 @@ func (s StructMapperSource) getMapping(typ reflect.Type) (mapping, error) {
 	return m, nil
 }
 
-func (s StructMapperSource) setMappings(typ reflect.Type, prefix string, v visited, m mapping, inits [][]int, position ...int) {
+func (s mapperSourceImpl) setMappings(typ reflect.Type, prefix string, v visited, m mapping, inits [][]int, position ...int) {
 	count := v[typ]
 	if count > s.maxDepth {
 		return
@@ -525,7 +529,7 @@ func mapperFromMapping[T any](m mapping, typ reflect.Type, isPointer bool, opts 
 }
 
 //nolint:gochecknoglobals
-var defaultStructMapper = StructMapperSource{
+var defaultStructMapper = mapperSourceImpl{
 	structTagKey:    "db",
 	columnSeparator: ".",
 	fieldMapperFn:   snakeCaseFieldFunc,
