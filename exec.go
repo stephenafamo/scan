@@ -17,6 +17,13 @@ func One[T any](ctx context.Context, exec Queryer, m Mapper[T], query string, ar
 	}
 	defer rows.Close()
 
+	return OneFromRows(ctx, m, rows)
+}
+
+// OneFromRows scans a single row from the given [Rows] result and maps it to T using a [Queryer]
+func OneFromRows[T any](ctx context.Context, m Mapper[T], rows Rows) (T, error) {
+	var t T
+
 	allowUnknown, _ := ctx.Value(CtxKeyAllowUnknownColumns).(bool)
 	v, err := newValues(rows, allowUnknown)
 	if err != nil {
@@ -52,13 +59,18 @@ func One[T any](ctx context.Context, exec Queryer, m Mapper[T], query string, ar
 
 // All scans all rows from the query and returns a slice []T of all rows using a [Queryer]
 func All[T any](ctx context.Context, exec Queryer, m Mapper[T], query string, args ...any) ([]T, error) {
-	var results []T
-
 	rows, err := exec.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
+
+	return AllFromRows(ctx, m, rows)
+}
+
+// AllFromRows scans all rows from the given [Rows] and returns a slice []T of all rows using a [Queryer]
+func AllFromRows[T any](ctx context.Context, m Mapper[T], rows Rows) ([]T, error) {
+	var results []T
 
 	allowUnknown, _ := ctx.Value(CtxKeyAllowUnknownColumns).(bool)
 	v, err := newValues(rows, allowUnknown)
@@ -94,13 +106,18 @@ func All[T any](ctx context.Context, exec Queryer, m Mapper[T], query string, ar
 	return results, rows.Err()
 }
 
-// Cursor returns a cursor that works similar to *sql.Rows
+// Cursor runs a query and returns a cursor that works similar to *sql.Rows
 func Cursor[T any](ctx context.Context, exec Queryer, m Mapper[T], query string, args ...any) (ICursor[T], error) {
 	rows, err := exec.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
 
+	return CursorFromRows(ctx, m, rows)
+}
+
+// CursorFromRows returns a cursor from [Rows] that works similar to *sql.Rows
+func CursorFromRows[T any](ctx context.Context, m Mapper[T], rows Rows) (ICursor[T], error) {
 	allowUnknown, _ := ctx.Value(CtxKeyAllowUnknownColumns).(bool)
 	v, err := newValues(rows, allowUnknown)
 	if err != nil {
@@ -143,6 +160,15 @@ func Collect(ctx context.Context, exec Queryer, collector func(context.Context, 
 	}
 	defer rows.Close()
 
+	return CollectFromRows(ctx, collector, rows)
+}
+
+// Collect multiple slices of values from the given [Rows]
+// collector must be of the structure
+// func(context.Context, map[string]int) func(*Values) (t1, t2, ..., error)
+// The returned slice contains values like this
+// {[]t1, []t2}
+func CollectFromRows(ctx context.Context, collector func(context.Context, cols) any, rows Rows) ([]any, error) {
 	allowUnknown, _ := ctx.Value(CtxKeyAllowUnknownColumns).(bool)
 	v, err := newValues(rows, allowUnknown)
 	if err != nil {
