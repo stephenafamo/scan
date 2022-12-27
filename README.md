@@ -12,6 +12,7 @@ Scan provides the ability to use database/sql/rows to scan datasets directly to 
 ## Reference
 
 * Standard library scan package. For use with `database/sql`. [Link](https://pkg.go.dev/github.com/stephenafamo/scan/stdscan)
+* PGX library scan package. For use with `github.com/jackc/pgx/v5`. [Link](https://pkg.go.dev/github.com/stephenafamo/scan/pgxscan)
 * Base scan package. For use with any implementation of [`scan.Queryer`](https://pkg.go.dev/github.com/stephenafamo/scan#Queryer). [Link](https://pkg.go.dev/github.com/stephenafamo/scan)
 
 ## Using with `database/sql`
@@ -61,9 +62,39 @@ func collectIDandEmail(_ context.Context, c cols) any {
 
 And many more!!
 
+## Using with [pgx](https://github.com/jackc/pgx)
+
+```go
+package main
+
+import (
+    "context"
+
+    "github.com/jackc/pgx/v5/pgxpool"
+    "github.com/stephenafamo/scan"
+    "github.com/stephenafamo/scan/pgxscan"
+)
+
+type User struct {
+    ID    string
+    Name  string
+    Email string
+    Age   int
+}
+
+func main() {
+    ctx := context.Background()
+    db, _ := pgxpool.New(ctx, "example-connection-url")
+
+    // []User{...}
+    users, _ := pgxscan.All(ctx, db, scan.StructMapper[User](), `SELECT id, name, email, age FROM users`)
+}
+```
+
 ## Using with other DB packages
 
-Instead of `github.com/stephenafamo/scan/stdscan`, use the base package `github.com/stephenafam/scan` which only needs an executor that implements the right interface.
+Instead of `github.com/stephenafamo/scan/stdscan`, use the base package `github.com/stephenafam/scan` which only needs an executor that implements the right interface.  
+Both `stdscan` and `pgxscan` are based on this.
 
 ## How it works
 
