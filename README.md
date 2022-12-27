@@ -65,30 +65,11 @@ And many more!!
 ## Using with [pgx](https://github.com/jackc/pgx)
 
 ```go
-package main
+ctx := context.Background()
+db, _ := pgxpool.New(ctx, "example-connection-url")
 
-import (
-    "context"
-
-    "github.com/jackc/pgx/v5/pgxpool"
-    "github.com/stephenafamo/scan"
-    "github.com/stephenafamo/scan/pgxscan"
-)
-
-type User struct {
-    ID    string
-    Name  string
-    Email string
-    Age   int
-}
-
-func main() {
-    ctx := context.Background()
-    db, _ := pgxpool.New(ctx, "example-connection-url")
-
-    // []User{...}
-    users, _ := pgxscan.All(ctx, db, scan.StructMapper[User](), `SELECT id, name, email, age FROM users`)
-}
+// []User{...}
+users, _ := pgxscan.All(ctx, db, scan.StructMapper[User](), `SELECT id, name, email, age FROM users`)
 ```
 
 ## Using with other DB packages
@@ -98,18 +79,167 @@ Both `stdscan` and `pgxscan` are based on this.
 
 ## How it works
 
-Scan take a `Mapper` to indicate how each row should be scanned. After which, `One()` will scan a single row, and `All()` will scan all rows.  
+### Scanning Functions
+
+#### `One()`
+
+Use `One()` to scan and return **a single** row.
+
+```go
+// User{...}
+user, _ := stdscan.One(ctx, db, scan.StructMapper[User](), `SELECT id, name, email, age FROM users`)
+```
+
+#### `All()`
+
+Use `All()` to scan and return **all** rows.
+
+```go
+// []User{...}
+users, _ := stdscan.All(ctx, db, scan.StructMapper[User](), `SELECT id, name, email, age FROM users`)
+```
+
+#### `Cursor()`
+
+Use `Cursor()` to scan each row on demand. This is useful when retrieving large results.
+
+```go
+c, _ := stdscan.Cursor(ctx, db, scan.StructMapper[User](), `SELECT id, name, email, age FROM users`)
+defer c.Close()
+
+for c.Next() {
+    // User{...}
+    user := c.Get()
+}
+```
+
+#### `Collect`
+
+Use `Collect()` to group returned columns together. For example, getting a slice of all IDs and a slice of user emails.
+
+```go
+func collect(v *scan.Value) (int, string, error) {
+    return scan.Value[int](v, "id"), scan.Value[string](v, "email"), nil
+}
+
+// []User{...}
+idsAndEmails, _ := stdscan.Collect(ctx, db, scan.StructMapper[User](), `SELECT id, email FROM users`)
+
+// []int{1, 2, 3, ...}
+ids := idsAndEmail[0].([]int)
+
+// []string{"user1@example.com", "user2@example.com", "user3@example.com", ...}
+emails := idsAndEmail[1].([]string)
+```
+
+### Mappers
+
+Each of these functions takes a `Mapper` to indicate how each row should be scanned.  
 The `Mapper` has the signature:
 
 ```go
 type Mapper[T any] func(context.Context, cols) func(*Values) (T, error)
 ```
 
-Any function that has this signature can be used as a `Mapper`. There are some helper types for common cases:
+Any function that has this signature can be used as a `Mapper`. There are some builtin mappers for common cases:
 
-* `ColumnMapper[T any](name string)`: Maps the value of a single column by name.
-* `SingleColumnMapper[T any]`: For queries that return only one column. Throws an error if the query returns more than one column.
-* `SliceMapper[T any]`: Maps a row into a slice of values `[]T`. Unless all the columns are of the same type, it will likely be used to map the row to `[]any`.
-* `MapMapper[T any]`: Maps a row into a map of values `map[string]T`. The key of the map is the column names. Unless all columns are of the same type, it will likely be used to map to `map[string]any`.
-* `StructMapper[T any](...MappingOption)`: This is the most advanced mapper. Scans column values into the fields of the struct.
-* `CustomStructMapper[T any](MapperSource, ...MappingOption)`: Uses a custom struct maping source which should have been created with [NewStructMapperSource](https://pkg.go.dev/github.com/stephenafamo/scan#NewStructMapperSource).
+#### `ColumnMapper[T any](name string)`
+
+Maps the value of a single column to the given type. The name of the column must be specified
+
+```go
+// []string{"user1@example.com", "user2@example.com", "user3@example.com", ...}
+emails, _ := stdscan.All(ctx, db, scan.ColumnMapper[string]("email"), `SELECT id, name, email FROM users`)
+```
+
+#### `SingleColumnMapper[T any]`
+
+For queries that return only one column. Since only one column is returned, there is no need to specify the column name.  
+This is why it throws an error if the query returns more than one column.
+
+```go
+// []string{"user1@example.com", "user2@example.com", "user3@example.com", ...}
+emails, _ := stdscan.All(ctx, db, scan.SingleColumnMapper[string], `SELECT email FROM users`)
+```
+
+#### `SliceMapper[T any]`
+
+Maps a row into a slice of values `[]T`. Unless all the columns are of the same type, it will likely be used to map the row to `[]any`.
+
+```go
+// [][]any{
+//    []any{1, "John Doe", "john@example.com"},
+//    []any{2, "Jane Doe", "jane@example.com"},
+//    ...
+// }
+users, _ := stdscan.All(ctx, db, scan.SliceMapper[any], `SELECT id, name, email FROM users`)
+```
+
+#### `MapMapper[T any]`
+
+Maps a row into a map of values `map[string]T`. The key of the map is the column names. Unless all columns are of the same type, it will likely be used to map to `map[string]any`.
+
+```go
+// []map[string]any{
+//    map[string]any{"id": 1, "name": John Doe", "email": "john@example.com"},
+//    map[string]any{"id": 2, "name": Jane Doe", "email": "jane@example.com"},
+//    ...
+// }
+users, _ := stdscan.All(ctx, db, scan.MapMapper[any], `SELECT id, name, email FROM users`)
+```
+
+#### `StructMapper[T any](...MappingOption)`
+
+This is the most advanced mapper. Scans column values into the fields of the struct.
+
+```go
+type User struct {
+    ID    int    `db:"id"`
+    Name  string `db:"name"`
+    Email string `db:"email"`
+    Age   int    `db:"age"`
+}
+
+// []User{...}
+users, _ := stdscan.All(ctx, db, scan.StructMapper[User](), `SELECT id, name, email, age FROM users`)
+```
+
+The default behaviour of `StructMapper` is often good enough. For more advanced use cases, some options can be passed to the StructMapper.
+
+* **WithStructTagPrefix**: Use this when every column from the database has a prefix.
+
+    ```go
+    users, _ := stdscan.All(ctx, db, scan.StructMapper[User](scan.WithStructTagPrefix("user-")),
+        `SELECT id AS "user-id", name AS "user-name" FROM users`,
+    )
+    ```
+
+* **WithRowValidator**: If the `StructMapper` has a row validator, the values will be sent to it before scanning. If the row is invalid (i.e. it returns false), then scanning is skipped and the zero value of the row-type is returned.
+
+#### `CustomStructMapper[T any](MapperSource, ...MappingOption)`
+
+Uses a custom struct maping source which should have been created with [NewStructMapperSource](https://pkg.go.dev/github.com/stephenafamo/scan#NewStructMapperSource).
+
+This works the same way as `StructMapper`, but instead of using the default mapping source, it uses a custom one.
+
+In the example below, we want to use a `scan` as the struct tag key instead of `db`
+
+```go
+type User struct {
+    ID    int    `scan:"id"`
+    Name  string `scan:"name"`
+    Email string `scan:"email"`
+    Age   int    `scan:"age"`
+}
+
+src, _ := NewStructMapperSource(scan.WithStructTagKey("scan"))
+// []User{...}
+users, _ := stdscan.All(ctx, db, scan.StructMapper[User](), `SELECT id, name, email, age FROM users`)
+```
+
+These are the options that can be passed to `NewStructMapperSource`:
+
+* **WithStructTagKey**: Change the struct tag used to map columns to struct fields. Default: **db**
+* **WithColumnSeparator**: Change the separator for column names of nested struct fields. Default: **.**
+* **WithFieldNameMapper**: Change how Struct field names are mapped to column names when there are no struct tags. Default: **snake_case** (i.e. `CreatedAt` is mapped to `created_at`).
+* **WithScannableTypes**: Pass a list of interfaces that if implemented, can be scanned by the executor. This means that a field with this type is treated as a single value and will not check the nested fields. Default: `*sql.Scanner`.

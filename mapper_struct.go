@@ -228,6 +228,7 @@ func WithTypeConverter(tc TypeConverter) MappingOption {
 	}
 }
 
+// WithStructTagPrefix should be used when every column from the database has a prefix.
 func WithStructTagPrefix(prefix string) MappingOption {
 	return func(opt *mappingOptions) {
 		opt.structTagPrefix = prefix
@@ -276,8 +277,8 @@ func WithFieldNameMapper(mapperFn NameMapperFunc) MappingSourceOption {
 }
 
 // WithScannableTypes specifies a list of interfaces that underlying database library can scan into.
-// In case the destination type passed to dbscan implements one of those interfaces,
-// dbscan will handle it as primitive type case i.e. simply pass the destination to the database library.
+// In case the destination type passed to scan implements one of those interfaces,
+// scan will handle it as primitive type case i.e. simply pass the destination to the database library.
 // Instead of attempting to map database columns to destination struct fields or map keys.
 // In order for reflection to capture the interface type, you must pass it by pointer.
 //
@@ -287,7 +288,7 @@ func WithFieldNameMapper(mapperFn NameMapperFunc) MappingSourceOption {
 //	    Scan(...) error
 //	}
 //
-// You can pass it to dbscan this way:
+// You can pass it to scan this way:
 // scan.WithScannableTypes((*Scanner)(nil)).
 func WithScannableTypes(scannableTypes ...interface{}) MappingSourceOption {
 	return func(src *mapperSourceImpl) error {
@@ -311,8 +312,7 @@ func WithScannableTypes(scannableTypes ...interface{}) MappingSourceOption {
 	}
 }
 
-// mapperSourceImpl is the core type in dbscan. It implements all the logic and exposes functionality available in the package.
-// With mapperSourceImpl type users can create a custom mapperSourceImpl instance and override default settings hence configure dbscan.
+// mapperSourceImpl is an implementation of StructMapperSource.
 type mapperSourceImpl struct {
 	structTagKey    string
 	columnSeparator string
