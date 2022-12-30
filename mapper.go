@@ -46,7 +46,7 @@ type mapinfo struct {
 type Mapper[T any] func(context.Context, cols) func(*Values) (T, error)
 
 // Mappable is an interface of a type that can map its own values
-// if a struct implement IMapper, using [StructMapper] to map its values
+// if a struct implement [Mappable], using [StructMapper] to map its values
 // will use the MapValues method instead
 type Mappable[T any] interface {
 	MapValues(cols) func(context.Context, *Values) (T, error)
