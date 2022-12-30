@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"regexp"
 	"strings"
+	"sync"
 )
 
 var (
@@ -236,11 +237,11 @@ func WithStructTagPrefix(prefix string) MappingOption {
 }
 
 // NewStructMapperSource creates a new Mapping object with provided list of options.
-func NewStructMapperSource(opts ...MappingSourceOption) (mapperSourceImpl, error) {
-	src := defaultStructMapper
+func NewStructMapperSource(opts ...MappingSourceOption) (StructMapperSource, error) {
+	src := newDefaultMapperSourceImpl()
 	for _, o := range opts {
-		if err := o(&src); err != nil {
-			return src, err
+		if err := o(src); err != nil {
+			return nil, err
 		}
 	}
 	return src, nil
@@ -319,20 +320,37 @@ type mapperSourceImpl struct {
 	fieldMapperFn   NameMapperFunc
 	scannableTypes  []reflect.Type
 	maxDepth        int
+	cache           map[reflect.Type]mapping
+	mutex           sync.RWMutex
 }
 
-func (s mapperSourceImpl) getMapping(typ reflect.Type) (mapping, error) {
+func (s *mapperSourceImpl) getMapping(typ reflect.Type) (mapping, error) {
+	s.mutex.RLock()
+	m, ok := s.cache[typ]
+	s.mutex.RUnlock()
+
+	if ok {
+		// fmt.Printf("hit: %s\n", typ.String())
+		return m, nil
+	}
+	// fmt.Printf("miss: %s\n", typ.String())
+
 	if typ == nil {
 		return nil, fmt.Errorf("Nil type passed to StructMapper")
 	}
 
-	m := make(mapping)
+	m = make(mapping)
 	s.setMappings(typ, "", make(visited), m, nil)
+
+	s.mutex.Lock()
+	// fmt.Printf("cached: %s\n", typ.String())
+	s.cache[typ] = m
+	s.mutex.Unlock()
 
 	return m, nil
 }
 
-func (s mapperSourceImpl) setMappings(typ reflect.Type, prefix string, v visited, m mapping, inits [][]int, position ...int) {
+func (s *mapperSourceImpl) setMappings(typ reflect.Type, prefix string, v visited, m mapping, inits [][]int, position ...int) {
 	count := v[typ]
 	if count > s.maxDepth {
 		return
@@ -529,10 +547,15 @@ func mapperFromMapping[T any](m mapping, typ reflect.Type, isPointer bool, opts 
 }
 
 //nolint:gochecknoglobals
-var defaultStructMapper = mapperSourceImpl{
-	structTagKey:    "db",
-	columnSeparator: ".",
-	fieldMapperFn:   snakeCaseFieldFunc,
-	scannableTypes:  []reflect.Type{reflect.TypeOf((*sql.Scanner)(nil)).Elem()},
-	maxDepth:        3,
+func newDefaultMapperSourceImpl() *mapperSourceImpl {
+	return &mapperSourceImpl{
+		structTagKey:    "db",
+		columnSeparator: ".",
+		fieldMapperFn:   snakeCaseFieldFunc,
+		scannableTypes:  []reflect.Type{reflect.TypeOf((*sql.Scanner)(nil)).Elem()},
+		maxDepth:        3,
+		cache:           make(map[reflect.Type]map[string]mapinfo),
+	}
 }
+
+var defaultStructMapper = newDefaultMapperSourceImpl()
