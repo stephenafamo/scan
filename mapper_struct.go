@@ -456,18 +456,18 @@ func mapperFromMapping[T any](m mapping, typ reflect.Type, isPointer bool, opts 
 		typ = typ.Elem()
 	}
 
+	typeConverter, hasTypeConverter := opts.typeConverter, opts.typeConverter != nil
+	rowValidator, hasRowValidator := opts.rowValidator, opts.rowValidator != nil
+
+	rowValFucs := make(map[string]func() reflect.Value)
+	rowTyps := make(map[string]reflect.Type)
+
 	return func(ctx context.Context, c cols) func(*Values) (T, error) {
 		// Filter the mapping so we only ask for the available columns
 		filtered, err := filterColumns(ctx, c, m, opts.structTagPrefix)
 		if err != nil {
 			return errorMapper[T](err)
 		}
-
-		typeConverter, hasTypeConverter := opts.typeConverter, opts.typeConverter != nil
-		rowValidator, hasRowValidator := opts.rowValidator, opts.rowValidator != nil
-
-		rowValFucs := make(map[string]func() reflect.Value)
-		rowTyps := make(map[string]reflect.Type)
 
 		for name, info := range filtered {
 			ft := typ.FieldByIndex(info.position).Type

@@ -5,6 +5,8 @@ import (
 	"reflect"
 )
 
+var zeroValue reflect.Value
+
 // Value retrieves a value from [Values] with the specified name
 // if [Values.IsRecording] returns true, it will ALWAYS return the zero value
 // of that type
@@ -16,7 +18,13 @@ func Value[T any](v *Values, name string) T {
 		v.record(name, reflect.TypeOf(x))
 	}
 
-	return v.get(name).(T)
+	i := v.get(name)
+	if i == nil {
+		var zero T
+		return zero
+	}
+
+	return i.(T)
 }
 
 // ReflectedValue returns the named value as an [reflect.Value]
@@ -127,13 +135,18 @@ func (v *Values) columnsCopy() map[string]int {
 
 func (v *Values) getRef(name string) reflect.Value {
 	index, ok := v.columns[name]
+
 	if !ok || v.recording {
 		if p, ok := v.pointerGetter[name]; ok {
 			return p()
 		}
 
-		x := reflect.New(v.types[name]).Elem()
-		return x
+		t := v.types[name]
+		if t == nil {
+			return zeroValue
+		}
+
+		return reflect.New(t).Elem()
 	}
 
 	return reflect.Indirect(
@@ -142,7 +155,17 @@ func (v *Values) getRef(name string) reflect.Value {
 }
 
 func (v *Values) get(name string) any {
-	return v.getRef(name).Interface()
+	ref := v.getRef(name)
+
+	if ref == zeroValue {
+		if v.recording {
+			return nil
+		}
+
+		return v.scanned[v.columns[name]]
+	}
+
+	return ref.Interface()
 }
 
 func (v *Values) record(name string, t reflect.Type) {
@@ -165,13 +188,12 @@ func (v *Values) scanRow(r Row) error {
 
 		t := v.types[name]
 		if t == nil {
-			var fallback interface{}
+			var fallback any
 			targets[i] = &fallback
 
 			continue
 		}
 
-		// pointers[i] = reflect.New(t).Interface()
 		if t.Kind() == reflect.Pointer {
 			targets[i] = reflect.New(t).Elem().Interface()
 		} else {

@@ -181,6 +181,20 @@ func TestSingleValue(t *testing.T) {
 	})
 }
 
+func TestMap(t *testing.T) {
+	user1 := map[string]any{"id": int64(1), "name": "foo"}
+	user2 := map[string]any{"id": int64(2), "name": "bar"}
+
+	testQuery(t, "user", queryCase[map[string]any]{
+		columns:   strstr{{"id", "int64"}, {"name", "string"}},
+		rows:      rows{[]any{1, "foo"}, []any{2, "bar"}},
+		query:     []string{"id", "name"},
+		mapper:    MapMapper[any],
+		expectOne: user1,
+		expectAll: []map[string]any{user1, user2},
+	})
+}
+
 func TestStruct(t *testing.T) {
 	user1 := User{ID: 1, Name: "foo"}
 	user2 := User{ID: 2, Name: "bar"}
