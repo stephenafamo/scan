@@ -69,8 +69,7 @@ func CustomStructMapper[T any](src StructMapperSource, optMod ...MappingOption) 
 }
 
 func structMapperFrom[T any](ctx context.Context, c cols, s StructMapperSource, opts mappingOptions) func(*Values) (T, error) {
-	var x T
-	typ := reflect.TypeOf(x)
+	typ := typeOf[T]()
 
 	isPointer, err := checks(typ)
 	if err != nil {

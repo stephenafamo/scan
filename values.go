@@ -14,8 +14,7 @@ var zeroValue reflect.Value
 // what was recorded
 func Value[T any](v *Values, name string) T {
 	if v.recording {
-		var x T
-		v.record(name, reflect.TypeOf(x))
+		v.record(name, typeOf[T]())
 	}
 
 	i := v.get(name)
