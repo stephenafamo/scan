@@ -29,22 +29,17 @@ type MapperTest[T any] struct {
 
 // To quickly generate column definition for tests
 // make it in the form {"1": 1, "2": 2}
-func columns(n int) map[string]int {
-	m := make(map[string]int, n)
+func columns(n int) []string {
+	m := make([]string, n)
 	for i := 0; i < n; i++ {
-		m[strconv.Itoa(i)] = i
+		m[i] = strconv.Itoa(i)
 	}
 
 	return m
 }
 
-func columnNames(names ...string) map[string]int {
-	m := make(map[string]int, len(names))
-	for i, name := range names {
-		m[name] = i
-	}
-
-	return m
+func columnNames(names ...string) []string {
+	return names
 }
 
 func RunMapperTests[T any](t *testing.T, cases MapperTests[T]) {
@@ -64,9 +59,25 @@ func RunMapperTest[T any](t *testing.T, name string, tc MapperTest[T]) {
 			ctx = context.WithValue(ctx, k, v)
 		}
 
-		m := tc.Mapper(ctx, tc.Values.columnsCopy())
+		tc.Values.scanDestination = make([]reflect.Value, len(tc.Values.columns))
 
-		val, err := m(tc.Values)
+		before, after := tc.Mapper(ctx, tc.Values.columnsCopy())
+
+		if before != nil {
+			err := before(tc.Values)
+			if diff := cmp.Diff(tc.ExpectedError, err, cmp.Comparer(compareMappingError)); diff != "" {
+				t.Fatalf("diff: %s", diff)
+			}
+
+			for i, ref := range tc.Values.scanDestination {
+				if ref == zeroValue {
+					continue
+				}
+				ref.Set(reflect.ValueOf(tc.Values.scanned[i]))
+			}
+		}
+
+		val, err := after(tc.Values)
 		if diff := cmp.Diff(tc.ExpectedError, err, cmp.Comparer(compareMappingError)); diff != "" {
 			t.Fatalf("diff: %s", diff)
 		}
@@ -240,7 +251,7 @@ func TestStructMapper(t *testing.T) {
 	RunMapperTest(t, "with pointer columns 1", MapperTest[PtrUser1]{
 		Values: &Values{
 			columns: columnNames("id", "name", "created_at", "updated_at"),
-			scanned: []any{1, "The Name", now, now.Add(time.Hour)},
+			scanned: []any{toPtr(1), "The Name", &now, toPtr(now.Add(time.Hour))},
 		},
 		Mapper: StructMapper[PtrUser1](),
 		ExpectedVal: PtrUser1{
@@ -252,7 +263,7 @@ func TestStructMapper(t *testing.T) {
 	RunMapperTest(t, "with pointer columns 2", MapperTest[PtrUser2]{
 		Values: &Values{
 			columns: columnNames("id", "name", "created_at", "updated_at"),
-			scanned: []any{1, "The Name", now, now.Add(time.Hour)},
+			scanned: []any{1, toPtr("The Name"), &now, toPtr(now.Add(time.Hour))},
 		},
 		Mapper: StructMapper[PtrUser2](),
 		ExpectedVal: PtrUser2{
@@ -442,7 +453,14 @@ func TestScannable(t *testing.T) {
 		t.Fatalf("couldn't get mapping: %v", err)
 	}
 
-	if _, ok := m["user"]; !ok {
+	var marked bool
+	for _, info := range m {
+		if info.name == "user" {
+			marked = true
+		}
+	}
+
+	if !marked {
 		t.Fatal("did not mark user as scannable")
 	}
 }

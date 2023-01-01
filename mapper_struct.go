@@ -57,7 +57,7 @@ func CustomStructMapper[T any](src StructMapperSource, optMod ...MappingOption) 
 		o(&opts)
 	}
 
-	mod := func(ctx context.Context, c cols) func(*Values) (T, error) {
+	mod := func(ctx context.Context, c cols) (func(*Values) error, func(*Values) (T, error)) {
 		return structMapperFrom[T](ctx, c, src, opts)
 	}
 
@@ -68,21 +68,21 @@ func CustomStructMapper[T any](src StructMapperSource, optMod ...MappingOption) 
 	return mod
 }
 
-func structMapperFrom[T any](ctx context.Context, c cols, s StructMapperSource, opts mappingOptions) func(*Values) (T, error) {
+func structMapperFrom[T any](ctx context.Context, c cols, s StructMapperSource, opts mappingOptions) (func(*Values) error, func(*Values) (T, error)) {
 	typ := typeOf[T]()
 
 	isPointer, err := checks(typ)
 	if err != nil {
-		return errorMapper[T](err)
+		return nil, errorMapper[T](err)
 	}
 
 	if m, ok := mappable[T](typ, isPointer); ok {
-		return m(ctx, c)
+		return nil, m(ctx, c)
 	}
 
 	mapping, err := s.getMapping(typ)
 	if err != nil {
-		return errorMapper[T](err)
+		return nil, errorMapper[T](err)
 	}
 
 	return mapperFromMapping[T](mapping, typ, isPointer, opts)(ctx, c)
@@ -329,27 +329,23 @@ func (s *mapperSourceImpl) getMapping(typ reflect.Type) (mapping, error) {
 	s.mutex.RUnlock()
 
 	if ok {
-		// fmt.Printf("hit: %s\n", typ.String())
 		return m, nil
 	}
-	// fmt.Printf("miss: %s\n", typ.String())
 
 	if typ == nil {
 		return nil, fmt.Errorf("Nil type passed to StructMapper")
 	}
 
-	m = make(mapping)
-	s.setMappings(typ, "", make(visited), m, nil)
+	s.setMappings(typ, "", make(visited), &m, nil)
 
 	s.mutex.Lock()
-	// fmt.Printf("cached: %s\n", typ.String())
 	s.cache[typ] = m
 	s.mutex.Unlock()
 
 	return m, nil
 }
 
-func (s *mapperSourceImpl) setMappings(typ reflect.Type, prefix string, v visited, m mapping, inits [][]int, position ...int) {
+func (s *mapperSourceImpl) setMappings(typ reflect.Type, prefix string, v visited, m *mapping, inits [][]int, position ...int) {
 	count := v[typ]
 	if count > s.maxDepth {
 		return
@@ -368,11 +364,12 @@ func (s *mapperSourceImpl) setMappings(typ reflect.Type, prefix string, v visite
 	// as a value itself. Return it
 	for _, scannable := range s.scannableTypes {
 		if reflect.PtrTo(typ).Implements(scannable) {
-			m[prefix] = mapinfo{
+			*m = append(*m, mapinfo{
+				name:      prefix,
 				position:  position,
 				init:      inits,
 				isPointer: isPointer,
-			}
+			})
 			return
 		}
 	}
@@ -426,28 +423,30 @@ func (s *mapperSourceImpl) setMappings(typ reflect.Type, prefix string, v visite
 			continue
 		}
 
-		m[key] = mapinfo{
+		*m = append(*m, mapinfo{
+			name:      key,
 			position:  currentIndex,
 			init:      inits,
 			isPointer: isPointer,
-		}
+		})
 	}
 
 	// If it has no exported field (such as time.Time) then we attempt to
 	// directly scan into it
 	if !hasExported {
-		m[prefix] = mapinfo{
+		*m = append(*m, mapinfo{
+			name:      prefix,
 			position:  position,
 			init:      inits,
 			isPointer: isPointer,
-		}
+		})
 	}
 }
 
 func filterColumns(ctx context.Context, c cols, m mapping, prefix string) (mapping, error) {
 	// Filter the mapping so we only ask for the available columns
-	filtered := make(mapping)
-	for name := range c {
+	filtered := make(mapping, 0, len(c))
+	for _, name := range c {
 		key := name
 		if prefix != "" {
 			if !strings.HasPrefix(name, prefix) {
@@ -457,18 +456,19 @@ func filterColumns(ctx context.Context, c cols, m mapping, prefix string) (mappi
 			key = name[len(prefix):]
 		}
 
-		v, ok := m[key]
-		if !ok {
-			continue
+		for _, info := range m {
+			if key == info.name {
+				info.name = name
+				filtered = append(filtered, info)
+				break
+			}
 		}
-
-		filtered[name] = v
 	}
 
 	return filtered, nil
 }
 
-func mapperFromMapping[T any](m mapping, typ reflect.Type, isPointer bool, opts mappingOptions) func(context.Context, cols) func(*Values) (T, error) {
+func mapperFromMapping[T any](m mapping, typ reflect.Type, isPointer bool, opts mappingOptions) func(context.Context, cols) (func(*Values) error, func(*Values) (T, error)) {
 	if isPointer {
 		typ = typ.Elem()
 	}
@@ -476,65 +476,108 @@ func mapperFromMapping[T any](m mapping, typ reflect.Type, isPointer bool, opts 
 	typeConverter, hasTypeConverter := opts.typeConverter, opts.typeConverter != nil
 	rowValidator, hasRowValidator := opts.rowValidator, opts.rowValidator != nil
 
-	rowTyps := make(map[string]reflect.Type)
-
-	return func(ctx context.Context, c cols) func(*Values) (T, error) {
+	return func(ctx context.Context, c cols) (func(*Values) error, func(*Values) (T, error)) {
 		// Filter the mapping so we only ask for the available columns
 		filtered, err := filterColumns(ctx, c, m, opts.structTagPrefix)
 		if err != nil {
-			return errorMapper[T](err)
+			return nil, errorMapper[T](err)
 		}
 
-		for name, info := range filtered {
-			ft := typ.FieldByIndex(info.position).Type
-			if hasTypeConverter {
-				rowTyps[name] = typeConverter.ConvertType(ft)
-			} else {
-				rowTyps[name] = ft
+		rowTyps := make([]reflect.Type, len(filtered))
+		if hasTypeConverter {
+			for i, info := range filtered {
+				ft := typ.FieldByIndex(info.position).Type
+				rowTyps[i] = typeConverter.ConvertType(ft)
 			}
 		}
 
-		return func(v *Values) (T, error) {
-			rowVals := make(map[string]reflect.Value, len(filtered))
-			for name := range filtered {
-				rowVals[name] = ReflectedValue(v, name, rowTyps[name])
-			}
+		var scannerKey int
+		return func(v *Values) error {
+				row := reflect.New(typ).Elem()
+				scannerKey = v.saveInStore(row)
 
-			if hasRowValidator && !rowValidator(rowVals) {
-				var zero T
-				return zero, nil
-			}
+				if hasTypeConverter {
+					return nil
+				}
 
-			row := reflect.New(typ).Elem()
-			for name, info := range filtered {
-				for _, v := range info.init {
-					pv := row.FieldByIndex(v)
-					if !pv.IsZero() {
-						continue
+				for _, info := range filtered {
+					for _, v := range info.init {
+						pv := row.FieldByIndex(v)
+						if !pv.IsZero() {
+							continue
+						}
+
+						pv.Set(reflect.New(pv.Type().Elem()))
 					}
 
-					pv.Set(reflect.New(pv.Type().Elem()))
+					fv := row.FieldByIndex(info.position)
+					if err := v.setScanDestination(info.name, fv); err != nil {
+						return err
+					}
 				}
 
-				val := rowVals[name]
-				if hasTypeConverter {
+				return nil
+			}, func(v *Values) (T, error) {
+				if v.IsRecording() {
+					var t T
+					return t, nil
+				}
+
+				rowVals := make(map[string]reflect.Value, len(filtered))
+
+				if hasRowValidator {
+					for _, info := range filtered {
+						colName := info.name
+						rowVals[colName] = reflect.ValueOf(v.scanned[v.index(colName)])
+					}
+					if !rowValidator(rowVals) {
+						var zero T
+						return zero, nil
+					}
+				}
+
+				row := v.getFromStore(scannerKey).(reflect.Value)
+
+				if !hasTypeConverter {
+					if isPointer {
+						row = row.Addr()
+					}
+					return row.Interface().(T), nil
+				}
+
+				for i, info := range filtered {
+					for _, v := range info.init {
+						pv := row.FieldByIndex(v)
+						if !pv.IsZero() {
+							continue
+						}
+
+						pv.Set(reflect.New(pv.Type().Elem()))
+					}
+
+					var val reflect.Value
+					if hasRowValidator {
+						val = rowVals[info.name]
+					} else {
+						val = ReflectedValue(v, info.name, rowTyps[i])
+					}
+
 					val = typeConverter.OriginalValue(val)
+
+					fv := row.FieldByIndex(info.position)
+					if info.isPointer {
+						fv.Elem().Set(val)
+					} else {
+						fv.Set(val)
+					}
 				}
 
-				fv := row.FieldByIndex(info.position)
-				if info.isPointer {
-					fv.Elem().Set(val)
-				} else {
-					fv.Set(val)
+				if isPointer {
+					row = row.Addr()
 				}
-			}
 
-			if isPointer {
-				row = row.Addr()
+				return row.Interface().(T), nil
 			}
-
-			return row.Interface().(T), nil
-		}
 	}
 }
 
@@ -546,7 +589,7 @@ func newDefaultMapperSourceImpl() *mapperSourceImpl {
 		fieldMapperFn:   snakeCaseFieldFunc,
 		scannableTypes:  []reflect.Type{reflect.TypeOf((*sql.Scanner)(nil)).Elem()},
 		maxDepth:        3,
-		cache:           make(map[reflect.Type]map[string]mapinfo),
+		cache:           make(map[reflect.Type][]mapinfo),
 	}
 }
 

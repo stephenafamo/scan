@@ -29,8 +29,13 @@ func TestValueRecording(t *testing.T) {
 	}
 
 	vals := &Values{
-		types:     make(map[string]reflect.Type, len(Columns)),
+		types:     make([]reflect.Type, len(Columns)),
 		recording: true,
+	}
+
+	for k, v := range Columns {
+		vals.columns = append(vals.columns, k)
+		vals.scanned = append(vals.scanned, reflect.New(reflect.TypeOf(v)).Interface())
 	}
 
 	// record the values
@@ -43,14 +48,16 @@ func TestValueRecording(t *testing.T) {
 
 	// get the values and check the type
 	for k, v := range Columns {
-		vTyp := reflect.TypeOf(v)
-		gotten := ReflectedValue(vals, k, vTyp).Interface()
-		// We expect the zero value because there was no
-		// scanning
-		expected := reflect.Zero(vTyp).Interface()
+		t.Run(k, func(t *testing.T) {
+			vTyp := reflect.TypeOf(v)
+			gotten := ReflectedValue(vals, k, vTyp).Interface()
+			// We expect the zero value because there was no
+			// scanning
+			expected := reflect.Zero(vTyp).Interface()
 
-		if diff := cmp.Diff(expected, gotten); diff != "" {
-			t.Fatalf("diff: %s", diff)
-		}
+			if diff := cmp.Diff(expected, gotten); diff != "" {
+				t.Fatalf("diff: %s", diff)
+			}
+		})
 	}
 }

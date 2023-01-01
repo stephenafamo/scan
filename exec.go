@@ -30,11 +30,16 @@ func OneFromRows[T any](ctx context.Context, m Mapper[T], rows Rows) (T, error) 
 		return t, err
 	}
 
-	genFunc := m(ctx, v.columnsCopy())
+	before, after := m(ctx, v.columnsCopy())
 
 	// Record the mapping
 	v.startRecording()
-	if _, err = genFunc(v); err != nil {
+	if before != nil {
+		if err = before(v); err != nil {
+			return t, err
+		}
+	}
+	if _, err = after(v); err != nil {
 		return t, err
 	}
 	if err := v.stopRecording(); err != nil {
@@ -45,11 +50,7 @@ func OneFromRows[T any](ctx context.Context, m Mapper[T], rows Rows) (T, error) 
 		return t, sql.ErrNoRows
 	}
 
-	if err = v.scanRow(rows); err != nil {
-		return t, err
-	}
-
-	t, err = genFunc(v)
+	t, err = scanOneRow(v, rows, before, after)
 	if err != nil {
 		return t, err
 	}
@@ -70,32 +71,31 @@ func All[T any](ctx context.Context, exec Queryer, m Mapper[T], query string, ar
 
 // AllFromRows scans all rows from the given [Rows] and returns a slice []T of all rows using a [Queryer]
 func AllFromRows[T any](ctx context.Context, m Mapper[T], rows Rows) ([]T, error) {
-	var results []T
-
 	allowUnknown, _ := ctx.Value(CtxKeyAllowUnknownColumns).(bool)
 	v, err := newValues(rows, allowUnknown)
 	if err != nil {
 		return nil, err
 	}
 
-	genFunc := m(ctx, v.columnsCopy())
+	before, after := m(ctx, v.columnsCopy())
 
 	// Record the mapping
 	v.startRecording()
-	if _, err = genFunc(v); err != nil {
+	if before != nil {
+		if err = before(v); err != nil {
+			return nil, err
+		}
+	}
+	if _, err = after(v); err != nil {
 		return nil, err
 	}
 	if err := v.stopRecording(); err != nil {
 		return nil, err
 	}
 
+	var results []T
 	for rows.Next() {
-		err = v.scanRow(rows)
-		if err != nil {
-			return nil, err
-		}
-
-		one, err := genFunc(v)
+		one, err := scanOneRow(v, rows, before, after)
 		if err != nil {
 			return nil, err
 		}
@@ -124,11 +124,16 @@ func CursorFromRows[T any](ctx context.Context, m Mapper[T], rows Rows) (ICursor
 		return nil, err
 	}
 
-	genFunc := m(ctx, v.columnsCopy())
+	before, after := m(ctx, v.columnsCopy())
 
 	// Record the mapping
 	v.startRecording()
-	if _, err = genFunc(v); err != nil {
+	if before != nil {
+		if err = before(v); err != nil {
+			return nil, err
+		}
+	}
+	if _, err = after(v); err != nil {
 		return nil, err
 	}
 	if err := v.stopRecording(); err != nil {
@@ -136,9 +141,10 @@ func CursorFromRows[T any](ctx context.Context, m Mapper[T], rows Rows) (ICursor
 	}
 
 	return &cursor[T]{
-		r: rows,
-		v: v,
-		f: genFunc,
+		r:      rows,
+		v:      v,
+		before: before,
+		after:  after,
 	}, nil
 }
 
@@ -238,4 +244,21 @@ func CollectFromRows(ctx context.Context, collector func(context.Context, cols) 
 	}
 
 	return resp, nil
+}
+
+func scanOneRow[T any](v *Values, rows Rows, before func(*Values) error, after func(*Values) (T, error)) (T, error) {
+	if before != nil {
+		if err := before(v); err != nil {
+			var t T
+			return t, err
+		}
+	}
+
+	err := v.scanRow(rows)
+	if err != nil {
+		var t T
+		return t, err
+	}
+
+	return after(v)
 }

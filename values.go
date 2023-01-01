@@ -1,6 +1,7 @@
 package scan
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 )
@@ -17,7 +18,7 @@ func Value[T any](v *Values, name string) T {
 		v.record(name, typeOf[T]())
 	}
 
-	i := v.get(name)
+	i := v.get(v.index(name))
 	if i == nil {
 		var zero T
 		return zero
@@ -34,7 +35,7 @@ func ReflectedValue(v *Values, name string, typ reflect.Type) reflect.Value {
 		v.record(name, typ)
 	}
 
-	return v.getRef(name)
+	return v.getRef(v.index(name))
 }
 
 func newValues(r Rows, allowUnknown bool) (*Values, error) {
@@ -43,15 +44,10 @@ func newValues(r Rows, allowUnknown bool) (*Values, error) {
 		return nil, err
 	}
 
-	// convert columns to a map
-	colMap := make(map[string]int, len(cols))
-	for k, v := range cols {
-		colMap[v] = k
-	}
-
 	return &Values{
-		columns: colMap,
-		types:   make(map[string]reflect.Type, len(cols)),
+		columns:         cols,
+		scanDestination: make([]reflect.Value, len(cols)),
+		types:           make([]reflect.Type, len(cols)),
 	}, nil
 }
 
@@ -60,11 +56,13 @@ func newValues(r Rows, allowUnknown bool) (*Values, error) {
 // Column names must be unique, so
 // if multiple columns have the same name, only the last one remains
 type Values struct {
-	columns      map[string]int
-	recording    bool
-	types        map[string]reflect.Type
-	scanned      []any
-	allowUnknown bool
+	columns         []string
+	recording       bool
+	types           []reflect.Type
+	scanned         []any
+	allowUnknown    bool
+	scanDestination []reflect.Value
+	store           []any
 }
 
 // IsRecording returns wether the values are currently in recording mode
@@ -77,13 +75,29 @@ func (v *Values) startRecording() {
 	v.recording = true
 }
 
+func (v *Values) index(name string) int {
+	for i, n := range v.columns {
+		if name == n {
+			return i
+		}
+	}
+
+	return -1
+}
+
 func (v *Values) findMissingColumns() []string {
 	cols := make([]string, len(v.columns))
 
-	for name, index := range v.columns {
-		if _, ok := v.types[name]; !ok {
-			cols[index] = name // to preserve order
+	for index, name := range v.columns {
+		if v.scanDestination[index] != zeroValue {
+			continue
 		}
+
+		if t := v.types[index]; t != nil {
+			continue
+		}
+
+		cols[index] = name // to preserve order
 	}
 
 	// Remvoe empty strings
@@ -98,10 +112,12 @@ func (v *Values) findMissingColumns() []string {
 }
 
 func (v *Values) stopRecording() error {
-	if !v.allowUnknown && len(v.types) != len(v.columns) {
+	if !v.allowUnknown {
 		missing := v.findMissingColumns()
-		err := fmt.Errorf("No destination for columns %v", missing)
-		return createError(err, append([]string{"no destination"}, missing...)...)
+		if len(missing) > 0 {
+			err := fmt.Errorf("No destination for columns %v", missing)
+			return createError(err, append([]string{"no destination"}, missing...)...)
+		}
 	}
 
 	v.recording = false
@@ -111,23 +127,19 @@ func (v *Values) stopRecording() error {
 // To get a copy of the columns to pass to mapper generators
 // since modifing the map can have unintended side effects.
 // Ideally, a generator should only call this once
-func (v *Values) columnsCopy() map[string]int {
-	m := make(map[string]int, len(v.columns))
-	for k, v := range v.columns {
-		m[k] = v
-	}
+func (v *Values) columnsCopy() []string {
+	m := make([]string, len(v.columns))
+	copy(m, v.columns)
 	return m
 }
 
-func (v *Values) getRef(name string) reflect.Value {
-	index, ok := v.columns[name]
+func (v *Values) getRef(index int) reflect.Value {
+	if index == -1 {
+		return zeroValue
+	}
 
-	if !ok || v.recording {
-		t := v.types[name]
-		if t == nil {
-			return zeroValue
-		}
-
+	if v.recording {
+		t := v.types[index]
 		return reflect.New(t).Elem()
 	}
 
@@ -136,29 +148,38 @@ func (v *Values) getRef(name string) reflect.Value {
 	)
 }
 
-func (v *Values) get(name string) any {
-	ref := v.getRef(name)
+func (v *Values) get(index int) any {
+	ref := v.getRef(index)
 
 	if ref == zeroValue {
 		if v.recording {
 			return nil
 		}
 
-		return v.scanned[v.columns[name]]
+		return v.scanned[index]
 	}
 
 	return ref.Interface()
 }
 
 func (v *Values) record(name string, t reflect.Type) {
-	v.types[name] = t
+	i := v.index(name)
+	if i == -1 {
+		return
+	}
+	v.types[i] = t
 }
 
 func (v *Values) scanRow(r Row) error {
 	targets := make([]any, len(v.columns))
 
-	for name, i := range v.columns {
-		t := v.types[name]
+	for i := range v.columns {
+		if dest := v.scanDestination[i]; dest != zeroValue {
+			targets[i] = dest.Addr().Interface()
+			continue
+		}
+
+		t := v.types[i]
 		if t == nil {
 			var fallback any
 			targets[i] = &fallback
@@ -179,5 +200,30 @@ func (v *Values) scanRow(r Row) error {
 	}
 
 	v.scanned = targets
+	v.scanDestination = make([]reflect.Value, len(v.columns))
 	return nil
+}
+
+func (v *Values) setScanDestination(colName string, val reflect.Value) error {
+	if !val.CanAddr() {
+		return createError(errors.New("inaddressable value given as scan destination"), colName)
+	}
+
+	colIndex := v.index(colName)
+	if colIndex == -1 {
+		return createError(errors.New("unknown column to map to"), colName)
+	}
+
+	v.scanDestination[colIndex] = val
+
+	return nil
+}
+
+func (v *Values) saveInStore(val any) (key int) {
+	v.store = append(v.store, val)
+	return len(v.store) - 1
+}
+
+func (v *Values) getFromStore(key int) any {
+	return v.store[key]
 }

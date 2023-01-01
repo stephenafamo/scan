@@ -30,7 +30,7 @@ func Cursor[T any](ctx context.Context, exec Queryer, m scan.Mapper[T], sql stri
 // func(cols) func(*Values) (t1, t2, ..., error)
 // The returned slice contains values like this
 // {[]t1, []t2}
-func Collect(ctx context.Context, exec Queryer, collector func(context.Context, map[string]int) any, sql string, args ...any) ([]any, error) {
+func Collect(ctx context.Context, exec Queryer, collector func(context.Context, []string) any, sql string, args ...any) ([]any, error) {
 	return scan.Collect(ctx, convert(exec), collector, sql, args...)
 }
 
