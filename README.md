@@ -45,12 +45,6 @@ func main() {
     userIDs, _ := stdscan.All(ctx, db, scan.SingleColumnMapper[int], "SELECT id FROM users")
     // []User{...}
     users, _ := stdscan.All(ctx, db, scan.StructMapper[User](), `SELECT id, name, email, age FROM users`)
-
-    // []any{
-    //     []int{1, 2, 3, 4, 5},
-    //     []string{"user1@example.com", "user2@example.com", ...},
-    // }
-    idsAndEmail, _ := stdscan.Collect(ctx, db, collectIDandEmail, `SELECT id, email FROM users`)
 }
 
 func collectIDandEmail(_ context.Context, c cols) any {
@@ -111,25 +105,6 @@ for c.Next() {
     // User{...}
     user := c.Get()
 }
-```
-
-#### `Collect`
-
-Use `Collect()` to group returned columns together. For example, getting a slice of all IDs and a slice of user emails.
-
-```go
-func collect(v *scan.Value) (int, string, error) {
-    return scan.Value[int](v, "id"), scan.Value[string](v, "email"), nil
-}
-
-// []User{...}
-idsAndEmails, _ := stdscan.Collect(ctx, db, scan.StructMapper[User](), `SELECT id, email FROM users`)
-
-// []int{1, 2, 3, ...}
-ids := idsAndEmail[0].([]int)
-
-// []string{"user1@example.com", "user2@example.com", "user3@example.com", ...}
-emails := idsAndEmail[1].([]string)
 ```
 
 ### Mappers
