@@ -373,14 +373,6 @@ func TestStructMapper(t *testing.T) {
 		Values: &Values{
 			columns: columnNames("id", "name"),
 			scanned: []any{wrapper{1}, wrapper{"The Name"}},
-			pointerGetter: map[string]func() reflect.Value{
-				"id": func() reflect.Value {
-					return typeConverter{}.ConvertType(reflect.TypeOf(100))
-				},
-				"name": func() reflect.Value {
-					return typeConverter{}.ConvertType(reflect.TypeOf("The Name"))
-				},
-			},
 		},
 		Mapper:      StructMapper[User](WithTypeConverter(typeConverter{})),
 		ExpectedVal: User{ID: 1, Name: "The Name"},
@@ -666,8 +658,8 @@ type wrapper struct {
 
 type typeConverter struct{}
 
-func (d typeConverter) ConvertType(typ reflect.Type) reflect.Value {
-	val := reflect.ValueOf(wrapper{
+func (d typeConverter) ConvertType(typ reflect.Type) reflect.Type {
+	val := reflect.TypeOf(wrapper{
 		V: reflect.New(typ).Interface(),
 	})
 

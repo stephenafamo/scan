@@ -20,7 +20,7 @@ var (
 type TypeConverter interface {
 	// ConvertType modifies the type of the struct
 	// the method is called with the expected type of the column
-	ConvertType(reflect.Type) reflect.Value
+	ConvertType(reflect.Type) reflect.Type
 
 	// OriginalValue retrieves the original value from the converted type
 	// the value given is a value of the type returned by ConvertType
@@ -476,7 +476,6 @@ func mapperFromMapping[T any](m mapping, typ reflect.Type, isPointer bool, opts 
 	typeConverter, hasTypeConverter := opts.typeConverter, opts.typeConverter != nil
 	rowValidator, hasRowValidator := opts.rowValidator, opts.rowValidator != nil
 
-	rowValFucs := make(map[string]func() reflect.Value)
 	rowTyps := make(map[string]reflect.Type)
 
 	return func(ctx context.Context, c cols) func(*Values) (T, error) {
@@ -489,9 +488,7 @@ func mapperFromMapping[T any](m mapping, typ reflect.Type, isPointer bool, opts 
 		for name, info := range filtered {
 			ft := typ.FieldByIndex(info.position).Type
 			if hasTypeConverter {
-				rowValFucs[name] = func() reflect.Value {
-					return typeConverter.ConvertType(ft)
-				}
+				rowTyps[name] = typeConverter.ConvertType(ft)
 			} else {
 				rowTyps[name] = ft
 			}
@@ -500,11 +497,7 @@ func mapperFromMapping[T any](m mapping, typ reflect.Type, isPointer bool, opts 
 		return func(v *Values) (T, error) {
 			rowVals := make(map[string]reflect.Value, len(filtered))
 			for name := range filtered {
-				if hasTypeConverter {
-					rowVals[name] = ValueCallback(v, name, rowValFucs[name])
-				} else {
-					rowVals[name] = ReflectedValue(v, name, rowTyps[name])
-				}
+				rowVals[name] = ReflectedValue(v, name, rowTyps[name])
 			}
 
 			if hasRowValidator && !rowValidator(rowVals) {
