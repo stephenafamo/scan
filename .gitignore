@@ -1,0 +1,4 @@
+# profile files
+*.prof
+# Test executable compiled when generating profiles
+scan.test
