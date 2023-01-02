@@ -39,29 +39,29 @@ func (m mapping) cols() []string {
 	return cols
 }
 
-// Mapper is a function that return the mapping function.
+// Mapper is a function that return the mapping functions.
 // Any expensive operation, like reflection should be done outside the returned
 // function.
-// It is called with the columns from the query to get the mapping function
+// It is called with the columns from the query to get the mapping functions
 // which is then used to map every row.
 //
-// The generator function does not return an error itself to make it less cumbersome
-// It is recommended to instead return a mapping function that returns an error
-// the ErrorMapper is provider for this
-//
-// The returned function is called once with values.IsRecording() == true to
-// record the expected types
-// For each row, the DB values are then scanned into Values before
-// calling the returned function.
-type Mapper[T any] func(context.Context, cols) (before func(*Values) (any, error), after func(any) (T, error))
+// The Mapper does not return an error itself to make it less cumbersome
+// It is recommended to instead return a function that returns an error
+// the [ErrorMapper] is provider for this
+type Mapper[T any] func(context.Context, cols) (before BeforeFunc, after func(any) (T, error))
+
+// BeforeFunc is returned by a mapper and is called before a row is scanned
+// Scans should be scheduled with either
+// the [*Row.ScheduleScan] or [*Row.ScheduleScanx] methods
+type BeforeFunc = func(*Row) (link any, err error)
 
 // The generator function does not return an error itself to make it less cumbersome
 // so we return a function that only returns an error instead
 // This function makes it easy to return this error
-func errorMapper[T any](err error, meta ...string) (func(*Values) (any, error), func(any) (T, error)) {
+func ErrorMapper[T any](err error, meta ...string) (func(*Row) (any, error), func(any) (T, error)) {
 	err = createError(err, meta...)
 
-	return func(v *Values) (any, error) {
+	return func(v *Row) (any, error) {
 			return nil, err
 		}, func(any) (T, error) {
 			var t T
@@ -100,13 +100,13 @@ func (m *MappingError) Error() string {
 
 // For queries that return only one column
 // throws an error if there is more than one column
-func SingleColumnMapper[T any](ctx context.Context, c cols) (before func(*Values) (any, error), after func(any) (T, error)) {
+func SingleColumnMapper[T any](ctx context.Context, c cols) (before func(*Row) (any, error), after func(any) (T, error)) {
 	if len(c) != 1 {
 		err := fmt.Errorf("Expected 1 column but got %d columns", len(c))
-		return errorMapper[T](err, "wrong column count", "1", strconv.Itoa(len(c)))
+		return ErrorMapper[T](err, "wrong column count", "1", strconv.Itoa(len(c)))
 	}
 
-	return func(v *Values) (any, error) {
+	return func(v *Row) (any, error) {
 			var t T
 			v.ScheduleScan(c[0], &t)
 			return &t, nil
@@ -116,9 +116,9 @@ func SingleColumnMapper[T any](ctx context.Context, c cols) (before func(*Values
 }
 
 // Map a column by name.
-func ColumnMapper[T any](name string) func(ctx context.Context, c cols) (before func(*Values) (any, error), after func(any) (T, error)) {
-	return func(ctx context.Context, c cols) (before func(*Values) (any, error), after func(any) (T, error)) {
-		return func(v *Values) (any, error) {
+func ColumnMapper[T any](name string) func(ctx context.Context, c cols) (before func(*Row) (any, error), after func(any) (T, error)) {
+	return func(ctx context.Context, c cols) (before func(*Row) (any, error), after func(any) (T, error)) {
+		return func(v *Row) (any, error) {
 				var t T
 				v.ScheduleScan(name, &t)
 				return &t, nil
@@ -129,8 +129,8 @@ func ColumnMapper[T any](name string) func(ctx context.Context, c cols) (before 
 }
 
 // Maps each row into []any in the order
-func SliceMapper[T any](ctx context.Context, c cols) (before func(*Values) (any, error), after func(any) ([]T, error)) {
-	return func(v *Values) (any, error) {
+func SliceMapper[T any](ctx context.Context, c cols) (before func(*Row) (any, error), after func(any) ([]T, error)) {
+	return func(v *Row) (any, error) {
 			row := make([]T, len(c))
 
 			for index, name := range c {
@@ -145,8 +145,8 @@ func SliceMapper[T any](ctx context.Context, c cols) (before func(*Values) (any,
 
 // Maps all rows into map[string]T
 // Most likely used with interface{} to get a map[string]interface{}
-func MapMapper[T any](ctx context.Context, c cols) (before func(*Values) (any, error), after func(any) (map[string]T, error)) {
-	return func(v *Values) (any, error) {
+func MapMapper[T any](ctx context.Context, c cols) (before func(*Row) (any, error), after func(any) (map[string]T, error)) {
+	return func(v *Row) (any, error) {
 			row := make([]*T, len(c))
 
 			for index, name := range c {

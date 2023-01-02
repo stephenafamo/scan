@@ -162,8 +162,8 @@ func randate() time.Time {
 	return time.Unix(sec, 0)
 }
 
-func userMod(ctx context.Context, c cols) (BeforeMod, AfterMod) {
-	return func(v *Values) (any, error) {
+func userMod(ctx context.Context, c cols) (BeforeFunc, AfterMod) {
+	return func(v *Row) (any, error) {
 			return nil, nil
 		}, func(link, retrieved any) error {
 			u, ok := retrieved.(*User)

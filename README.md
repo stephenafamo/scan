@@ -113,10 +113,14 @@ Each of these functions takes a `Mapper` to indicate how each row should be scan
 The `Mapper` has the signature:
 
 ```go
-type Mapper[T any] func(context.Context, cols) func(*Values) (T, error)
+type Mapper[T any] func(context.Context, cols) (before func(*Values) (any, error), after func(any) (T, error))
 ```
 
-Any function that has this signature can be used as a `Mapper`. There are some builtin mappers for common cases:
+A mapper returns 2 functions
+
+* before: This is called before scanning the row. The mapper should schedule scans using the `ScheduleScan` or `ScheduleScanx` methods of the `Row`. The return value of the **before** function is passed to the **after** function after scanning values from the database.
+
+There are some builtin mappers for common cases:
 
 #### `ColumnMapper[T any](name string)`
 

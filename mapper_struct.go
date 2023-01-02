@@ -51,7 +51,7 @@ func CustomStructMapper[T any](src StructMapperSource, optMod ...MappingOption) 
 		o.apply(&opts)
 	}
 
-	mod := func(ctx context.Context, c cols) (func(*Values) (any, error), func(any) (T, error)) {
+	mod := func(ctx context.Context, c cols) (func(*Row) (any, error), func(any) (T, error)) {
 		return structMapperFrom[T](ctx, c, src, opts)
 	}
 
@@ -62,17 +62,17 @@ func CustomStructMapper[T any](src StructMapperSource, optMod ...MappingOption) 
 	return mod
 }
 
-func structMapperFrom[T any](ctx context.Context, c cols, s StructMapperSource, opts mappingOptions) (func(*Values) (any, error), func(any) (T, error)) {
+func structMapperFrom[T any](ctx context.Context, c cols, s StructMapperSource, opts mappingOptions) (func(*Row) (any, error), func(any) (T, error)) {
 	typ := typeOf[T]()
 
 	isPointer, err := checks(typ)
 	if err != nil {
-		return errorMapper[T](err)
+		return ErrorMapper[T](err)
 	}
 
 	mapping, err := s.getMapping(typ)
 	if err != nil {
-		return errorMapper[T](err)
+		return ErrorMapper[T](err)
 	}
 
 	return mapperFromMapping[T](mapping, typ, isPointer, opts)(ctx, c)
@@ -215,7 +215,6 @@ func WithScannableTypes(scannableTypes ...any) MappingSourceOption {
 		for _, stOpt := range scannableTypes {
 			st := reflect.TypeOf(stOpt)
 			if st == nil {
-				fmt.Println("IS NILL")
 				return fmt.Errorf("scannable type must be a pointer, got %T", stOpt)
 			}
 			if st.Kind() != reflect.Ptr {
@@ -385,12 +384,12 @@ func filterColumns(ctx context.Context, c cols, m mapping, prefix string) (mappi
 	return filtered, nil
 }
 
-func mapperFromMapping[T any](m mapping, typ reflect.Type, isPointer bool, opts mappingOptions) func(context.Context, cols) (func(*Values) (any, error), func(any) (T, error)) {
-	return func(ctx context.Context, c cols) (func(*Values) (any, error), func(any) (T, error)) {
+func mapperFromMapping[T any](m mapping, typ reflect.Type, isPointer bool, opts mappingOptions) func(context.Context, cols) (func(*Row) (any, error), func(any) (T, error)) {
+	return func(ctx context.Context, c cols) (func(*Row) (any, error), func(any) (T, error)) {
 		// Filter the mapping so we only ask for the available columns
 		filtered, err := filterColumns(ctx, c, m, opts.structTagPrefix)
 		if err != nil {
-			return errorMapper[T](err)
+			return ErrorMapper[T](err)
 		}
 
 		mapper := regular[T]{
@@ -418,8 +417,8 @@ type regular[T any] struct {
 	validator RowValidator
 }
 
-func (s regular[T]) regular() (func(*Values) (any, error), func(any) (T, error)) {
-	return func(v *Values) (any, error) {
+func (s regular[T]) regular() (func(*Row) (any, error), func(any) (T, error)) {
+	return func(v *Row) (any, error) {
 			var row reflect.Value
 			if s.isPointer {
 				row = reflect.New(s.typ.Elem()).Elem()
@@ -453,8 +452,8 @@ func (s regular[T]) regular() (func(*Values) (any, error), func(any) (T, error))
 		}
 }
 
-func (s regular[T]) allOptions() (func(*Values) (any, error), func(any) (T, error)) {
-	return func(v *Values) (any, error) {
+func (s regular[T]) allOptions() (func(*Row) (any, error), func(any) (T, error)) {
+	return func(v *Row) (any, error) {
 			row := make([]reflect.Value, len(s.filtered))
 
 			for i, info := range s.filtered {

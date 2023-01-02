@@ -12,24 +12,23 @@ type ICursor[T any] interface {
 }
 
 type cursor[T any] struct {
-	r      Rows
-	v      *Values
-	before func(*Values) (any, error)
+	v      *Row
+	before func(*Row) (any, error)
 	after  func(any) (T, error)
 }
 
 func (c *cursor[T]) Close() error {
-	return c.r.Close()
+	return c.v.r.Close()
 }
 
 func (c *cursor[T]) Err() error {
-	return c.r.Err()
+	return c.v.r.Err()
 }
 
 func (c *cursor[T]) Next() bool {
-	return c.r.Next()
+	return c.v.r.Next()
 }
 
 func (c *cursor[T]) Get() (T, error) {
-	return scanOneRow(c.v, c.r, c.before, c.after)
+	return scanOneRow(c.v, c.before, c.after)
 }

@@ -23,7 +23,7 @@ func OneFromRows[T any](ctx context.Context, m Mapper[T], rows Rows) (T, error) 
 	var t T
 
 	allowUnknown, _ := ctx.Value(CtxKeyAllowUnknownColumns).(bool)
-	v, err := newValues(rows, allowUnknown)
+	v, err := wrapRows(rows, allowUnknown)
 	if err != nil {
 		return t, err
 	}
@@ -34,7 +34,7 @@ func OneFromRows[T any](ctx context.Context, m Mapper[T], rows Rows) (T, error) 
 		return t, sql.ErrNoRows
 	}
 
-	t, err = scanOneRow(v, rows, before, after)
+	t, err = scanOneRow(v, before, after)
 	if err != nil {
 		return t, err
 	}
@@ -56,7 +56,7 @@ func All[T any](ctx context.Context, exec Queryer, m Mapper[T], query string, ar
 // AllFromRows scans all rows from the given [Rows] and returns a slice []T of all rows using a [Queryer]
 func AllFromRows[T any](ctx context.Context, m Mapper[T], rows Rows) ([]T, error) {
 	allowUnknown, _ := ctx.Value(CtxKeyAllowUnknownColumns).(bool)
-	v, err := newValues(rows, allowUnknown)
+	v, err := wrapRows(rows, allowUnknown)
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +65,7 @@ func AllFromRows[T any](ctx context.Context, m Mapper[T], rows Rows) ([]T, error
 
 	var results []T
 	for rows.Next() {
-		one, err := scanOneRow(v, rows, before, after)
+		one, err := scanOneRow(v, before, after)
 		if err != nil {
 			return nil, err
 		}
@@ -89,7 +89,7 @@ func Cursor[T any](ctx context.Context, exec Queryer, m Mapper[T], query string,
 // CursorFromRows returns a cursor from [Rows] that works similar to *sql.Rows
 func CursorFromRows[T any](ctx context.Context, m Mapper[T], rows Rows) (ICursor[T], error) {
 	allowUnknown, _ := ctx.Value(CtxKeyAllowUnknownColumns).(bool)
-	v, err := newValues(rows, allowUnknown)
+	v, err := wrapRows(rows, allowUnknown)
 	if err != nil {
 		return nil, err
 	}
@@ -97,21 +97,20 @@ func CursorFromRows[T any](ctx context.Context, m Mapper[T], rows Rows) (ICursor
 	before, after := m(ctx, v.columnsCopy())
 
 	return &cursor[T]{
-		r:      rows,
 		v:      v,
 		before: before,
 		after:  after,
 	}, nil
 }
 
-func scanOneRow[T any](v *Values, rows Rows, before func(*Values) (any, error), after func(any) (T, error)) (T, error) {
+func scanOneRow[T any](v *Row, before func(*Row) (any, error), after func(any) (T, error)) (T, error) {
 	val, err := before(v)
 	if err != nil {
 		var t T
 		return t, err
 	}
 
-	err = v.scanRow(rows)
+	err = v.scanCurrentRow()
 	if err != nil {
 		var t T
 		return t, err
