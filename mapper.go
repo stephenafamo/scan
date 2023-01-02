@@ -55,12 +55,6 @@ func (m mapping) cols() []string {
 // calling the returned function.
 type Mapper[T any] func(context.Context, cols) (before func(*Values) (any, error), after func(any) (T, error))
 
-// if a struct implements [Mappable] for its own type, using [StructMapper] to map its values
-// will use the MapValues method instead
-type Mappable[T any] interface {
-	MapValues(context.Context, cols) (before func(*Values) (any, error), after func(any) (T, error))
-}
-
 // The generator function does not return an error itself to make it less cumbersome
 // so we return a function that only returns an error instead
 // This function makes it easy to return this error

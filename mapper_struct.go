@@ -10,14 +10,6 @@ import (
 	"sync"
 )
 
-var (
-	colsTyp = reflect.TypeOf(cols{})
-	valsTyp = reflect.TypeOf(&Values{})
-	anyTyp  = reflect.TypeOf((*any)(nil)).Elem()
-	errTyp  = reflect.TypeOf((*error)(nil)).Elem()
-	ctxTyp  = reflect.TypeOf((*context.Context)(nil)).Elem()
-)
-
 type TypeConverter interface {
 	// ConvertType modifies the type of the struct
 	// the method is called with the expected type of the column
@@ -78,10 +70,6 @@ func structMapperFrom[T any](ctx context.Context, c cols, s StructMapperSource, 
 		return errorMapper[T](err)
 	}
 
-	if m, ok := mappable[T](typ, isPointer); ok {
-		return m(ctx, c)
-	}
-
 	mapping, err := s.getMapping(typ)
 	if err != nil {
 		return errorMapper[T](err)
@@ -111,90 +99,6 @@ func checks(typ reflect.Type) (bool, error) {
 	}
 
 	return isPointer, nil
-}
-
-func mappable[T any](typ reflect.Type, isPointer bool) (func(context.Context, cols) (func(*Values) (any, error), func(any) (T, error)), bool) {
-	var t, pt reflect.Type
-	if isPointer {
-		t = typ.Elem()
-		pt = typ
-	} else {
-		t = typ
-		pt = reflect.PointerTo(typ)
-	}
-
-	// Check if the type has a methodTyp called "MapValues"
-	methodTyp, ok := pt.MethodByName("MapValues")
-	if !ok {
-		return nil, false
-	}
-
-	// If the response type is a pointer
-	var pointerResp bool
-
-	// func(*Values) (any, error)
-	beforeFunc := reflect.FuncOf([]reflect.Type{valsTyp}, []reflect.Type{anyTyp, errTyp}, false)
-
-	// func(any) (T, error)
-	VFunc := reflect.FuncOf([]reflect.Type{anyTyp}, []reflect.Type{t, errTyp}, false)
-	// func(any) (*T, error)
-	PVFunc := reflect.FuncOf([]reflect.Type{anyTyp}, []reflect.Type{pt, errTyp}, false)
-
-	switch methodTyp.Type {
-	// func (*Typ) MapValues(ctx, cols) func(*Values) (any, error), func(any) (T, error)
-	case reflect.FuncOf([]reflect.Type{pt, ctxTyp, colsTyp}, []reflect.Type{beforeFunc, VFunc}, false):
-		pointerResp = false
-
-	// func (*Typ) MapValues(ctx, cols) func(*Values) (any, error), func(any) (*T, error)
-	case reflect.FuncOf([]reflect.Type{pt, ctxTyp, colsTyp}, []reflect.Type{beforeFunc, PVFunc}, false):
-		pointerResp = true
-
-	default:
-		// Does not implement the method
-		return nil, false
-	}
-
-	method := reflect.New(t).MethodByName("MapValues")
-
-	// same return type... easy
-	if isPointer == pointerResp {
-		return func(ctx context.Context, c cols) (func(*Values) (any, error), func(any) (T, error)) {
-			res := method.Call(
-				[]reflect.Value{reflect.ValueOf(ctx), reflect.ValueOf(c)},
-			)
-			return res[0].Interface().(func(*Values) (any, error)),
-				res[1].Interface().(func(any) (T, error))
-		}, true
-	}
-
-	var zero T
-
-	return func(ctx context.Context, c cols) (func(*Values) (any, error), func(any) (T, error)) {
-		res := method.Call(
-			[]reflect.Value{reflect.ValueOf(ctx), reflect.ValueOf(c)},
-		)
-		before, after := res[0], res[1]
-		return before.Interface().(func(v *Values) (any, error)), func(v any) (T, error) {
-			out := after.Call(
-				[]reflect.Value{reflect.ValueOf(v)},
-			)
-
-			var err error
-			if out[1].Interface() != nil {
-				return zero, out[1].Interface().(error)
-			}
-
-			val := out[0]
-
-			if pointerResp {
-				return val.Elem().Interface().(T), err
-			}
-
-			newVal := reflect.New(t)
-			newVal.Elem().Set(val)
-			return newVal.Interface().(T), err
-		}
-	}, true
 }
 
 // NameMapperFunc is a function type that maps a struct field name to the database column name.
