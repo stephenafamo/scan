@@ -113,12 +113,15 @@ Each of these functions takes a `Mapper` to indicate how each row should be scan
 The `Mapper` has the signature:
 
 ```go
-type Mapper[T any] func(context.Context, cols) (before func(*Values) (any, error), after func(any) (T, error))
+type Mapper[T any] func(context.Context, cols) (before BeforeFunc, after func(any) (T, error))
+
+type BeforeFunc = func(*Row) (link any, err error)
 ```
 
 A mapper returns 2 functions
 
-* before: This is called before scanning the row. The mapper should schedule scans using the `ScheduleScan` or `ScheduleScanx` methods of the `Row`. The return value of the **before** function is passed to the **after** function after scanning values from the database.
+* **before**: This is called before scanning the row. The mapper should schedule scans using the `ScheduleScan` or `ScheduleScanx` methods of the `Row`. The return value of the **before** function is passed to the **after** function after scanning values from the database.
+* **after**: This is called after the scan operation. The mapper should then covert the link value back to the desired concrete type.
 
 There are some builtin mappers for common cases:
 
@@ -195,7 +198,9 @@ The default behaviour of `StructMapper` is often good enough. For more advanced 
 
 * **WithRowValidator**: If the `StructMapper` has a row validator, the values will be sent to it before scanning. If the row is invalid (i.e. it returns false), then scanning is skipped and the zero value of the row-type is returned.
 
-#### `CustomStructMapper[T any](MapperSource, ...MappingOption)`
+* **WithTypeConverter**: If the `StructMapper` has a type converter, all fields of the struct are converted to a new type using the `ConverType` method. After scanning, the values are restored into the struct using the `OriginalValue` method.
+
+#### `CustomStructMapper[T any](MapperSource, ...MappingSourceOption)`
 
 Uses a custom struct maping source which should have been created with [NewStructMapperSource](https://pkg.go.dev/github.com/stephenafamo/scan#NewStructMapperSource).
 
