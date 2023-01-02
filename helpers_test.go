@@ -2,20 +2,11 @@ package scan
 
 import (
 	"math/rand"
-	"reflect"
 	"strings"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
 )
-
-func ptr[T any](v T) any {
-	val := reflect.ValueOf(v)
-	p := reflect.New(val.Type())
-	p.Elem().Set(val)
-
-	return p.Interface()
-}
 
 func colSliceFromMap(c [][2]string) []string {
 	s := make([]string, 0, len(c))
