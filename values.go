@@ -25,10 +25,9 @@ func newValues(r Rows, allowUnknown bool) (*Values, error) {
 // if multiple columns have the same name, only the last one remains
 type Values struct {
 	columns             []string
-	scanned             []any
-	allowUnknown        bool
 	scanDestinations    []reflect.Value
 	unknownDestinations []string
+	allowUnknown        bool
 }
 
 func (v *Values) index(name string) int {
@@ -75,7 +74,6 @@ func (v *Values) scanRow(r Row) error {
 		return err
 	}
 
-	v.scanned = targets
 	v.scanDestinations = make([]reflect.Value, len(v.columns))
 	return nil
 }

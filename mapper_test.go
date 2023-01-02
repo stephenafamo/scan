@@ -15,6 +15,7 @@ type MapperTests[T any] map[string]MapperTest[T]
 
 type MapperTest[T any] struct {
 	Values              *Values
+	scanned             []any
 	Context             map[contextKey]any
 	Mapper              Mapper[T]
 	ExpectedVal         T
@@ -52,7 +53,7 @@ func RunMapperTest[T any](t *testing.T, name string, tc MapperTest[T]) {
 			if ref == zeroValue {
 				continue
 			}
-			ref.Elem().Set(reflect.ValueOf(tc.Values.scanned[i]))
+			ref.Elem().Set(reflect.ValueOf(tc.scanned[i]))
 		}
 
 		val, err := after(link)
@@ -95,8 +96,8 @@ func TestColumnMapper(t *testing.T) {
 	RunMapperTest(t, "single column", MapperTest[int]{
 		Values: &Values{
 			columns: columns(1),
-			scanned: []any{100},
 		},
+		scanned:     []any{100},
 		Mapper:      ColumnMapper[int]("0"),
 		ExpectedVal: 100,
 	})
@@ -104,8 +105,8 @@ func TestColumnMapper(t *testing.T) {
 	RunMapperTest(t, "multiple columns", MapperTest[int]{
 		Values: &Values{
 			columns: columns(3),
-			scanned: []any{100, 200, 300},
 		},
+		scanned:     []any{100, 200, 300},
 		Mapper:      ColumnMapper[int]("1"),
 		ExpectedVal: 200,
 	})
@@ -115,8 +116,8 @@ func TestSingleColumnMapper(t *testing.T) {
 	RunMapperTest(t, "multiple columns", MapperTest[int]{
 		Values: &Values{
 			columns: columns(2),
-			scanned: []any{100},
 		},
+		scanned:             []any{100},
 		Mapper:              SingleColumnMapper[int],
 		ExpectedBeforeError: createError(nil, "wrong column count", "1", "2"),
 		ExpectedAfterError:  createError(nil, "wrong column count", "1", "2"),
@@ -125,8 +126,8 @@ func TestSingleColumnMapper(t *testing.T) {
 	RunMapperTest(t, "int", MapperTest[int]{
 		Values: &Values{
 			columns: columns(1),
-			scanned: []any{100},
 		},
+		scanned:     []any{100},
 		Mapper:      SingleColumnMapper[int],
 		ExpectedVal: 100,
 	})
@@ -134,8 +135,8 @@ func TestSingleColumnMapper(t *testing.T) {
 	RunMapperTest(t, "int64", MapperTest[int64]{
 		Values: &Values{
 			columns: columns(1),
-			scanned: []any{int64(100)},
 		},
+		scanned:     []any{int64(100)},
 		Mapper:      SingleColumnMapper[int64],
 		ExpectedVal: 100,
 	})
@@ -143,8 +144,8 @@ func TestSingleColumnMapper(t *testing.T) {
 	RunMapperTest(t, "string", MapperTest[string]{
 		Values: &Values{
 			columns: columns(1),
-			scanned: []any{"A fancy string"},
 		},
+		scanned:     []any{"A fancy string"},
 		Mapper:      SingleColumnMapper[string],
 		ExpectedVal: "A fancy string",
 	})
@@ -152,8 +153,8 @@ func TestSingleColumnMapper(t *testing.T) {
 	RunMapperTest(t, "time.Time", MapperTest[time.Time]{
 		Values: &Values{
 			columns: columns(1),
-			scanned: []any{now},
 		},
+		scanned:     []any{now},
 		Mapper:      SingleColumnMapper[time.Time],
 		ExpectedVal: now,
 	})
@@ -163,8 +164,8 @@ func TestSliceMapper(t *testing.T) {
 	RunMapperTest(t, "any slice", MapperTest[[]any]{
 		Values: &Values{
 			columns: columns(len(goodSlice)),
-			scanned: goodSlice,
 		},
+		scanned:     goodSlice,
 		Mapper:      SliceMapper[any],
 		ExpectedVal: goodSlice,
 	})
@@ -172,8 +173,8 @@ func TestSliceMapper(t *testing.T) {
 	RunMapperTest(t, "int slice", MapperTest[[]int]{
 		Values: &Values{
 			columns: columns(1),
-			scanned: []any{100},
 		},
+		scanned:     []any{100},
 		Mapper:      SliceMapper[int],
 		ExpectedVal: []int{100},
 	})
@@ -183,8 +184,8 @@ func TestMapMapper(t *testing.T) {
 	RunMapperTest(t, "MapMapper", MapperTest[map[string]any]{
 		Values: &Values{
 			columns: columns(len(goodSlice)),
-			scanned: goodSlice,
 		},
+		scanned:     goodSlice,
 		Mapper:      MapMapper[any],
 		ExpectedVal: mapToVals[any](goodSlice),
 	})
@@ -203,8 +204,8 @@ func TestStructMapper(t *testing.T) {
 	RunMapperTest(t, "flat struct", MapperTest[User]{
 		Values: &Values{
 			columns: columnNames("id", "name"),
-			scanned: []any{1, "The Name"},
 		},
+		scanned:     []any{1, "The Name"},
 		Mapper:      StructMapper[User](),
 		ExpectedVal: User{ID: 1, Name: "The Name"},
 	})
@@ -212,9 +213,9 @@ func TestStructMapper(t *testing.T) {
 	RunMapperTest(t, "with pointer columns 1", MapperTest[PtrUser1]{
 		Values: &Values{
 			columns: columnNames("id", "name", "created_at", "updated_at"),
-			scanned: []any{toPtr(1), "The Name", &now, toPtr(now.Add(time.Hour))},
 		},
-		Mapper: StructMapper[PtrUser1](),
+		scanned: []any{toPtr(1), "The Name", &now, toPtr(now.Add(time.Hour))},
+		Mapper:  StructMapper[PtrUser1](),
 		ExpectedVal: PtrUser1{
 			ID: toPtr(1), Name: "The Name",
 			PtrTimestamps: PtrTimestamps{CreatedAt: &now, UpdatedAt: toPtr(now.Add(time.Hour))},
@@ -224,9 +225,9 @@ func TestStructMapper(t *testing.T) {
 	RunMapperTest(t, "with pointer columns 2", MapperTest[PtrUser2]{
 		Values: &Values{
 			columns: columnNames("id", "name", "created_at", "updated_at"),
-			scanned: []any{1, toPtr("The Name"), &now, toPtr(now.Add(time.Hour))},
 		},
-		Mapper: StructMapper[PtrUser2](),
+		scanned: []any{1, toPtr("The Name"), &now, toPtr(now.Add(time.Hour))},
+		Mapper:  StructMapper[PtrUser2](),
 		ExpectedVal: PtrUser2{
 			ID: 1, Name: toPtr("The Name"),
 			PtrTimestamps: &PtrTimestamps{CreatedAt: &now, UpdatedAt: toPtr(now.Add(time.Hour))},
@@ -236,9 +237,9 @@ func TestStructMapper(t *testing.T) {
 	RunMapperTest(t, "anonymous embeds", MapperTest[UserWithTimestamps]{
 		Values: &Values{
 			columns: columnNames("id", "name", "created_at", "updated_at"),
-			scanned: []any{10, "The Name", now, now.Add(time.Hour)},
 		},
-		Mapper: StructMapper[UserWithTimestamps](),
+		scanned: []any{10, "The Name", now, now.Add(time.Hour)},
+		Mapper:  StructMapper[UserWithTimestamps](),
 		ExpectedVal: UserWithTimestamps{
 			User:       User{ID: 10, Name: "The Name"},
 			Timestamps: &Timestamps{CreatedAt: now, UpdatedAt: now.Add(time.Hour)},
@@ -248,9 +249,9 @@ func TestStructMapper(t *testing.T) {
 	RunMapperTest(t, "prefixed structs", MapperTest[Blog]{
 		Values: &Values{
 			columns: columnNames("id", "user.id", "user.name", "user.created_at"),
-			scanned: []any{100, 10, "The Name", now},
 		},
-		Mapper: StructMapper[Blog](),
+		scanned: []any{100, 10, "The Name", now},
+		Mapper:  StructMapper[Blog](),
 		ExpectedVal: Blog{
 			ID: 100,
 			User: UserWithTimestamps{
@@ -263,8 +264,8 @@ func TestStructMapper(t *testing.T) {
 	RunMapperTest(t, "tagged", MapperTest[Tagged]{
 		Values: &Values{
 			columns: columnNames("tag_id", "tag_name"),
-			scanned: []any{1, "The Name"},
 		},
+		scanned:     []any{1, "The Name"},
 		Mapper:      StructMapper[Tagged](),
 		ExpectedVal: Tagged{ID: 1, Name: "The Name"},
 	})
@@ -273,8 +274,8 @@ func TestStructMapper(t *testing.T) {
 		MapperTest: MapperTest[Blog]{
 			Values: &Values{
 				columns: columnNames("id", "user,id", "user,name", "user,created_at"),
-				scanned: []any{100, 10, "The Name", now},
 			},
+			scanned: []any{100, 10, "The Name", now},
 			ExpectedVal: Blog{
 				ID: 100,
 				User: UserWithTimestamps{
@@ -290,8 +291,8 @@ func TestStructMapper(t *testing.T) {
 		MapperTest: MapperTest[Blog]{
 			Values: &Values{
 				columns: columnNames("ID", "USER.ID", "USER.NAME", "USER.CREATEDAT"),
-				scanned: []any{100, 10, "The Name", now},
 			},
+			scanned: []any{100, 10, "The Name", now},
 			ExpectedVal: Blog{
 				ID: 100,
 				User: UserWithTimestamps{
@@ -307,8 +308,8 @@ func TestStructMapper(t *testing.T) {
 		MapperTest: MapperTest[Tagged]{
 			Values: &Values{
 				columns: columnNames("custom_id", "custom_name"),
-				scanned: []any{1, "The Name"},
 			},
+			scanned:     []any{1, "The Name"},
 			ExpectedVal: Tagged{ID: 1, Name: "The Name"},
 		},
 		Options: []MappingSourceOption{WithStructTagKey("custom")},
@@ -317,8 +318,8 @@ func TestStructMapper(t *testing.T) {
 	RunMapperTest(t, "with prefix", MapperTest[User]{
 		Values: &Values{
 			columns: columnNames("prefix--id", "prefix--name"),
-			scanned: []any{1, "The Name"},
 		},
+		scanned:     []any{1, "The Name"},
 		Mapper:      StructMapper[User](WithStructTagPrefix("prefix--")),
 		ExpectedVal: User{ID: 1, Name: "The Name"},
 	})
@@ -326,8 +327,8 @@ func TestStructMapper(t *testing.T) {
 	RunMapperTest(t, "with prefix and non-prefixed column", MapperTest[User]{
 		Values: &Values{
 			columns: columnNames("id", "prefix--name"),
-			scanned: []any{1, "The Name"},
 		},
+		scanned:     []any{1, "The Name"},
 		Mapper:      StructMapper[User](WithStructTagPrefix("prefix--")),
 		ExpectedVal: User{ID: 0, Name: "The Name"},
 	})
@@ -335,8 +336,8 @@ func TestStructMapper(t *testing.T) {
 	RunMapperTest(t, "with type converter", MapperTest[User]{
 		Values: &Values{
 			columns: columnNames("id", "name"),
-			scanned: []any{wrapper{1}, wrapper{"The Name"}},
 		},
+		scanned:     []any{wrapper{1}, wrapper{"The Name"}},
 		Mapper:      StructMapper[User](WithTypeConverter(typeConverter{})),
 		ExpectedVal: User{ID: 1, Name: "The Name"},
 	})
@@ -344,8 +345,8 @@ func TestStructMapper(t *testing.T) {
 	RunMapperTest(t, "with type converter ptr", MapperTest[*User]{
 		Values: &Values{
 			columns: columnNames("id", "name"),
-			scanned: []any{wrapper{1}, wrapper{"The Name"}},
 		},
+		scanned:     []any{wrapper{1}, wrapper{"The Name"}},
 		Mapper:      StructMapper[*User](WithTypeConverter(typeConverter{})),
 		ExpectedVal: &User{ID: 1, Name: "The Name"},
 	})
@@ -353,12 +354,12 @@ func TestStructMapper(t *testing.T) {
 	RunMapperTest(t, "with type converter deep", MapperTest[PtrUser2]{
 		Values: &Values{
 			columns: columnNames("id", "name", "created_at", "updated_at"),
-			scanned: []any{
-				wrapper{1},
-				wrapper{"The Name"},
-				wrapper{now},
-				wrapper{now.Add(time.Hour)},
-			},
+		},
+		scanned: []any{
+			wrapper{1},
+			wrapper{"The Name"},
+			wrapper{now},
+			wrapper{now.Add(time.Hour)},
 		},
 		Mapper: StructMapper[PtrUser2](WithTypeConverter(typeConverter{})),
 		ExpectedVal: PtrUser2{
@@ -370,8 +371,8 @@ func TestStructMapper(t *testing.T) {
 	RunMapperTest(t, "with row validator pass", MapperTest[User]{
 		Values: &Values{
 			columns: columnNames("id", "name"),
-			scanned: []any{1, "The Name"},
 		},
+		scanned: []any{1, "The Name"},
 		Mapper: StructMapper[User](WithRowValidator(func(cols []string, vals []reflect.Value) bool {
 			for i, c := range cols {
 				if c == "id" {
@@ -387,8 +388,8 @@ func TestStructMapper(t *testing.T) {
 	RunMapperTest(t, "with row validator fail", MapperTest[User]{
 		Values: &Values{
 			columns: columnNames("id", "name"),
-			scanned: []any{1, "The Name"},
 		},
+		scanned: []any{1, "The Name"},
 		Mapper: StructMapper[User](WithRowValidator(func(cols []string, vals []reflect.Value) bool {
 			for i, c := range cols {
 				if c == "id" {
@@ -404,8 +405,8 @@ func TestStructMapper(t *testing.T) {
 	RunMapperTest(t, "with mod", MapperTest[*User]{
 		Values: &Values{
 			columns: columnNames("id", "name"),
-			scanned: []any{2, "The Name"},
 		},
+		scanned:     []any{2, "The Name"},
 		Mapper:      CustomStructMapper[*User](defaultStructMapper, MapperMod(userMod)),
 		ExpectedVal: &User{ID: 400, Name: "The Name modified"},
 	})
@@ -473,4 +474,3 @@ func TestScannableErrors(t *testing.T) {
 		})
 	}
 }
-
