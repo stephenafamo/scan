@@ -31,28 +31,23 @@ type Row struct {
 	allowUnknown        bool
 }
 
+// ScheduleScan schedules a scan for the column name into the given value
+// val should be a pointer
 func (r *Row) ScheduleScan(colName string, val any) {
 	r.ScheduleScanx(colName, reflect.ValueOf(val))
 }
 
+// ScheduleScanx schedules a scan for the column name into the given reflect.Value
+// val.Kind() should be reflect.Pointer
 func (r *Row) ScheduleScanx(colName string, val reflect.Value) {
-	colIndex := r.index(colName)
-	if colIndex == -1 {
-		r.unknownDestinations = append(r.unknownDestinations, colName)
-		return
-	}
-
-	r.scanDestinations[colIndex] = val
-}
-
-func (r *Row) index(name string) int {
 	for i, n := range r.columns {
-		if name == n {
-			return i
+		if n == colName {
+			r.scanDestinations[i] = val
+			return
 		}
 	}
 
-	return -1
+	r.unknownDestinations = append(r.unknownDestinations, colName)
 }
 
 // To get a copy of the columns to pass to mapper generators

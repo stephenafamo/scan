@@ -217,7 +217,7 @@ func WithScannableTypes(scannableTypes ...any) MappingSourceOption {
 			if st == nil {
 				return fmt.Errorf("scannable type must be a pointer, got %T", stOpt)
 			}
-			if st.Kind() != reflect.Ptr {
+			if st.Kind() != reflect.Pointer {
 				return fmt.Errorf("scannable type must be a pointer, got %s: %s",
 					st.Kind(), st.String())
 			}
