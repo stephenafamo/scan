@@ -30,20 +30,6 @@ func OneFromRows[T any](ctx context.Context, m Mapper[T], rows Rows) (T, error) 
 
 	before, after := m(ctx, v.columnsCopy())
 
-	// Record the mapping
-	v.startRecording()
-	if before != nil {
-		if err = before(v); err != nil {
-			return t, err
-		}
-	}
-	if _, err = after(v); err != nil {
-		return t, err
-	}
-	if err := v.stopRecording(); err != nil {
-		return t, err
-	}
-
 	if !rows.Next() {
 		return t, sql.ErrNoRows
 	}
@@ -76,20 +62,6 @@ func AllFromRows[T any](ctx context.Context, m Mapper[T], rows Rows) ([]T, error
 	}
 
 	before, after := m(ctx, v.columnsCopy())
-
-	// Record the mapping
-	v.startRecording()
-	if before != nil {
-		if err = before(v); err != nil {
-			return nil, err
-		}
-	}
-	if _, err = after(v); err != nil {
-		return nil, err
-	}
-	if err := v.stopRecording(); err != nil {
-		return nil, err
-	}
 
 	var results []T
 	for rows.Next() {
@@ -124,20 +96,6 @@ func CursorFromRows[T any](ctx context.Context, m Mapper[T], rows Rows) (ICursor
 
 	before, after := m(ctx, v.columnsCopy())
 
-	// Record the mapping
-	v.startRecording()
-	if before != nil {
-		if err = before(v); err != nil {
-			return nil, err
-		}
-	}
-	if _, err = after(v); err != nil {
-		return nil, err
-	}
-	if err := v.stopRecording(); err != nil {
-		return nil, err
-	}
-
 	return &cursor[T]{
 		r:      rows,
 		v:      v,
@@ -146,19 +104,18 @@ func CursorFromRows[T any](ctx context.Context, m Mapper[T], rows Rows) (ICursor
 	}, nil
 }
 
-func scanOneRow[T any](v *Values, rows Rows, before func(*Values) error, after func(*Values) (T, error)) (T, error) {
-	if before != nil {
-		if err := before(v); err != nil {
-			var t T
-			return t, err
-		}
-	}
-
-	err := v.scanRow(rows)
+func scanOneRow[T any](v *Values, rows Rows, before func(*Values) (any, error), after func(any) (T, error)) (T, error) {
+	val, err := before(v)
 	if err != nil {
 		var t T
 		return t, err
 	}
 
-	return after(v)
+	err = v.scanRow(rows)
+	if err != nil {
+		var t T
+		return t, err
+	}
+
+	return after(val)
 }

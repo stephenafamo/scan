@@ -20,11 +20,12 @@ func toPtr[T any](v T) *T {
 type MapperTests[T any] map[string]MapperTest[T]
 
 type MapperTest[T any] struct {
-	Values        *Values
-	Context       map[contextKey]any
-	Mapper        Mapper[T]
-	ExpectedVal   T
-	ExpectedError error
+	Values              *Values
+	Context             map[contextKey]any
+	Mapper              Mapper[T]
+	ExpectedVal         T
+	ExpectedBeforeError error
+	ExpectedAfterError  error
 }
 
 // To quickly generate column definition for tests
@@ -59,26 +60,24 @@ func RunMapperTest[T any](t *testing.T, name string, tc MapperTest[T]) {
 			ctx = context.WithValue(ctx, k, v)
 		}
 
-		tc.Values.scanDestination = make([]reflect.Value, len(tc.Values.columns))
+		tc.Values.scanDestinations = make([]reflect.Value, len(tc.Values.columns))
 
 		before, after := tc.Mapper(ctx, tc.Values.columnsCopy())
 
-		if before != nil {
-			err := before(tc.Values)
-			if diff := cmp.Diff(tc.ExpectedError, err, cmp.Comparer(compareMappingError)); diff != "" {
-				t.Fatalf("diff: %s", diff)
-			}
-
-			for i, ref := range tc.Values.scanDestination {
-				if ref == zeroValue {
-					continue
-				}
-				ref.Set(reflect.ValueOf(tc.Values.scanned[i]))
-			}
+		link, err := before(tc.Values)
+		if diff := diffErr(tc.ExpectedBeforeError, err); diff != "" {
+			t.Fatalf("diff: %s", diff)
 		}
 
-		val, err := after(tc.Values)
-		if diff := cmp.Diff(tc.ExpectedError, err, cmp.Comparer(compareMappingError)); diff != "" {
+		for i, ref := range tc.Values.scanDestinations {
+			if ref == zeroValue {
+				continue
+			}
+			ref.Elem().Set(reflect.ValueOf(tc.Values.scanned[i]))
+		}
+
+		val, err := after(link)
+		if diff := diffErr(tc.ExpectedAfterError, err); diff != "" {
 			t.Fatalf("diff: %s", diff)
 		}
 		if diff := cmp.Diff(tc.ExpectedVal, val); diff != "" {
@@ -102,7 +101,7 @@ func RunCustomStructMapperTest[T any](t *testing.T, name string, tc CustomStruct
 	t.Helper()
 	m := tc.MapperTest
 	src, err := NewStructMapperSource(tc.Options...)
-	if diff := cmp.Diff(tc.ExpectedError, err); diff != "" {
+	if diff := cmp.Diff(tc.ExpectedBeforeError, err); diff != "" {
 		t.Fatalf("diff: %s", diff)
 	}
 	if err != nil {
@@ -139,8 +138,9 @@ func TestSingleColumnMapper(t *testing.T) {
 			columns: columns(2),
 			scanned: []any{100},
 		},
-		Mapper:        SingleColumnMapper[int],
-		ExpectedError: createError(nil, "wrong column count", "1", "2"),
+		Mapper:              SingleColumnMapper[int],
+		ExpectedBeforeError: createError(nil, "wrong column count", "1", "2"),
+		ExpectedAfterError:  createError(nil, "wrong column count", "1", "2"),
 	})
 
 	RunMapperTest(t, "int", MapperTest[int]{
@@ -353,7 +353,7 @@ func TestStructMapper(t *testing.T) {
 		Options: []MappingSourceOption{WithStructTagKey("custom")},
 	})
 
-	RunMapperTest(t, "custom tag", MapperTest[UserWithMapper]{
+	RunMapperTest(t, "custom mapper", MapperTest[UserWithMapper]{
 		Values: &Values{
 			columns: columnNames("id", "name"),
 			scanned: []any{1, "The Name"},
@@ -394,8 +394,14 @@ func TestStructMapper(t *testing.T) {
 			columns: columnNames("id", "name"),
 			scanned: []any{1, "The Name"},
 		},
-		Mapper: StructMapper[User](WithRowValidator(func(m map[string]reflect.Value) bool {
-			return m["id"].Int() == 1
+		Mapper: StructMapper[User](WithRowValidator(func(cols []string, vals []reflect.Value) bool {
+			for i, c := range cols {
+				if c == "id" {
+					return vals[i].Elem().Int() == 1
+				}
+			}
+
+			return false
 		})),
 		ExpectedVal: User{ID: 1, Name: "The Name"},
 	})
@@ -405,8 +411,14 @@ func TestStructMapper(t *testing.T) {
 			columns: columnNames("id", "name"),
 			scanned: []any{1, "The Name"},
 		},
-		Mapper: StructMapper[User](WithRowValidator(func(m map[string]reflect.Value) bool {
-			return m["id"].Int() == 100
+		Mapper: StructMapper[User](WithRowValidator(func(cols []string, vals []reflect.Value) bool {
+			for i, c := range cols {
+				if c == "id" {
+					return vals[i].Elem().Int() == 0
+				}
+			}
+
+			return false
 		})),
 		ExpectedVal: User{ID: 0, Name: ""},
 	})
@@ -416,16 +428,22 @@ func TestStructMapper(t *testing.T) {
 			columns: columnNames("id", "name"),
 			scanned: []any{2, "The Name"},
 		},
-		Mapper: Mod(StructMapper[*User](), func(ctx context.Context, c cols) MapperModFunc {
-			return func(v *Values, o any) error {
-				u, ok := o.(*User)
-				if !ok {
-					return errors.New("wrong retrieved type")
+		Mapper: Mod(StructMapper[*User](), func(ctx context.Context, c cols) (BeforeMod, AfterMod) {
+			return func(v *Values) (any, error) {
+					return nil, nil
+				}, func(link, retrieved any) error {
+					u, ok := retrieved.(*User)
+					if !ok {
+						return errors.New("wrong retrieved type")
+					}
+					if u == nil {
+						return nil
+					}
+					u.ID *= 200
+					u.Name += " modified"
+
+					return nil
 				}
-				u.ID *= 200
-				u.Name += " modified"
-				return nil
-			}
 		}),
 		ExpectedVal: &User{ID: 400, Name: "The Name modified"},
 	})
@@ -481,19 +499,38 @@ func TestMappable(t *testing.T) {
 	testMappable(t, true, mappablePP{ID: 100})
 	testMappable(t, true, &mappablePP{ID: 100})
 
-	t.Run("mappable error", func(t *testing.T) {
-		_, gotten := mappable[mappableBad](reflect.TypeOf(mappableBad{}), false)
+	t.Run("mappable error in before", func(t *testing.T) {
+		_, gotten := mappable[mappableBadBefore](reflect.TypeOf(mappableBadBefore{}), false)
 		if !gotten {
-			t.Fatalf("Expected mappableErr to be mappable but was not")
+			var m mappableBadBefore
+			t.Fatalf("Expected %T to be mappable but was not", m)
 		}
 		if gotten {
-			RunMapperTest(t, "", MapperTest[mappableBad]{
+			RunMapperTest(t, "", MapperTest[mappableBadBefore]{
 				Values: &Values{
 					columns: columnNames("id"),
 					scanned: []any{1},
 				},
-				Mapper:        StructMapper[mappableBad](),
-				ExpectedError: createError(errors.New("an error")),
+				Mapper:              StructMapper[mappableBadBefore](),
+				ExpectedBeforeError: createError(errors.New("an error")),
+			})
+		}
+	})
+
+	t.Run("mappable error in after", func(t *testing.T) {
+		_, gotten := mappable[mappableBadAfter](reflect.TypeOf(mappableBadAfter{}), false)
+		if !gotten {
+			var m mappableBadAfter
+			t.Fatalf("Expected %T to be mappable but was not", m)
+		}
+		if gotten {
+			RunMapperTest(t, "", MapperTest[mappableBadAfter]{
+				Values: &Values{
+					columns: columnNames("id"),
+					scanned: []any{1},
+				},
+				Mapper:             StructMapper[mappableBadAfter](),
+				ExpectedAfterError: createError(errors.New("an error")),
 			})
 		}
 	})
@@ -576,18 +613,25 @@ type ScannableUser struct {
 func (s ScannableUser) Scan() {
 }
 
+var _ Mappable[UserWithMapper] = UserWithMapper{}
+
 type UserWithMapper struct {
 	ID   int
 	Name string
 }
 
-func (UserWithMapper) MapValues(context.Context, cols) func(*Values) (UserWithMapper, error) {
-	return func(v *Values) (UserWithMapper, error) {
-		return UserWithMapper{
-			ID:   Value[int](v, "id") * 100,
-			Name: "@" + Value[string](v, "name"),
-		}, nil
-	}
+func (UserWithMapper) MapValues(context.Context, cols) (func(*Values) (any, error), func(any) (UserWithMapper, error)) {
+	return func(v *Values) (any, error) {
+			var u UserWithMapper
+			v.ScheduleScan("id", &u.ID)
+			v.ScheduleScan("name", &u.Name)
+			return &u, nil
+		}, func(a any) (UserWithMapper, error) {
+			u := a.(*UserWithMapper)
+			u.ID *= 100
+			u.Name = "@" + u.Name
+			return *u, nil
+		}
 }
 
 type noMatchingMethod struct{}
@@ -601,73 +645,85 @@ func (methodWithWrongSignature) MapValues(cols) func(methodWithWrongSignature, e
 // value to value
 type mappableVV struct{ ID int }
 
-func (mappableVV) MapValues(context.Context, cols) func(*Values) (mappableVV, error) {
-	return func(v *Values) (mappableVV, error) {
-		return mappableVV{
-			ID: Value[int](v, "id") * 100,
-		}, nil
-	}
+func (mappableVV) MapValues(context.Context, cols) (func(*Values) (any, error), func(any) (mappableVV, error)) {
+	return func(v *Values) (any, error) {
+			var u mappableVV
+			v.ScheduleScan("id", &u.ID)
+			return &u, nil
+		}, func(a any) (mappableVV, error) {
+			m := a.(*mappableVV)
+			m.ID *= 100
+			return *m, nil
+		}
 }
 
 // value to pointer
 type mappableVP struct{ ID int }
 
-func (mappableVP) MapValues(context.Context, cols) func(*Values) (*mappableVP, error) {
-	return func(v *Values) (*mappableVP, error) {
-		return &mappableVP{
-			ID: Value[int](v, "id") * 100,
-		}, nil
-	}
+func (mappableVP) MapValues(context.Context, cols) (func(*Values) (any, error), func(any) (*mappableVP, error)) {
+	return func(v *Values) (any, error) {
+			var u mappableVP
+			v.ScheduleScan("id", &u.ID)
+			return &u, nil
+		}, func(a any) (*mappableVP, error) {
+			m := a.(*mappableVP)
+			m.ID *= 100
+			return m, nil
+		}
 }
 
 // pointer to value
 type mappablePV struct{ ID int }
 
-func (*mappablePV) MapValues(context.Context, cols) func(*Values) (mappablePV, error) {
-	return func(v *Values) (mappablePV, error) {
-		return mappablePV{
-			ID: Value[int](v, "id") * 100,
-		}, nil
-	}
+func (*mappablePV) MapValues(context.Context, cols) (func(*Values) (any, error), func(any) (mappablePV, error)) {
+	return func(v *Values) (any, error) {
+			var u mappablePV
+			v.ScheduleScan("id", &u.ID)
+			return &u, nil
+		}, func(a any) (mappablePV, error) {
+			m := a.(*mappablePV)
+			m.ID *= 100
+			return *m, nil
+		}
 }
 
 // pointer to pointer
 type mappablePP struct{ ID int }
 
-func (*mappablePP) MapValues(context.Context, cols) func(*Values) (*mappablePP, error) {
-	return func(v *Values) (*mappablePP, error) {
-		return &mappablePP{
-			ID: Value[int](v, "id") * 100,
-		}, nil
-	}
-}
-
-// mappable that returns an error
-type mappableBad struct{ ID int }
-
-func (mappableBad) MapValues(context.Context, cols) func(*Values) (*mappableBad, error) {
-	return func(v *Values) (*mappableBad, error) {
-		return nil, createError(errors.New("an error"))
-	}
-}
-
-func compareMappingError(m, m2 *MappingError) bool {
-	if len(m.meta) != len(m2.meta) {
-		return false
-	}
-
-	// if no meta, the error strings should match exactly
-	if len(m.meta) == 0 {
-		return m.Error() == m2.Error()
-	}
-
-	for k := range m.meta {
-		if m.meta[k] != m2.meta[k] {
-			return false
+func (*mappablePP) MapValues(context.Context, cols) (func(*Values) (any, error), func(any) (*mappablePP, error)) {
+	return func(v *Values) (any, error) {
+			var u mappablePP
+			v.ScheduleScan("id", &u.ID)
+			return &u, nil
+		}, func(a any) (*mappablePP, error) {
+			m := a.(*mappablePP)
+			m.ID *= 100
+			return m, nil
 		}
-	}
+}
 
-	return true
+// mappable that returns an error in the before func
+type mappableBadBefore struct{ ID int }
+
+func (mappableBadBefore) MapValues(context.Context, cols) (func(*Values) (any, error), func(any) (mappableBadBefore, error)) {
+	return func(v *Values) (any, error) {
+			return nil, createError(errors.New("an error"))
+		}, func(a any) (mappableBadBefore, error) {
+			var m mappableBadBefore
+			return m, nil
+		}
+}
+
+// mappable that returns an error in the after func
+type mappableBadAfter struct{ ID int }
+
+func (mappableBadAfter) MapValues(context.Context, cols) (func(*Values) (any, error), func(any) (mappableBadAfter, error)) {
+	return func(v *Values) (any, error) {
+			return nil, nil
+		}, func(a any) (mappableBadAfter, error) {
+			var m mappableBadAfter
+			return m, createError(errors.New("an error"))
+		}
 }
 
 type wrapper struct {

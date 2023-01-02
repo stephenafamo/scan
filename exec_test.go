@@ -97,7 +97,7 @@ func testQuery[T any](t *testing.T, name string, tc queryCase[T]) {
 		queryer := stdQ{ex}
 		t.Run("one", func(t *testing.T) {
 			one, err := One(ctx, queryer, tc.mapper, query)
-			if diff := cmp.Diff(tc.expectedErr, err, cmp.Comparer(compareMappingError)); diff != "" {
+			if diff := diffErr(tc.expectedErr, err); diff != "" {
 				t.Fatalf("diff: %s", diff)
 			}
 
@@ -108,7 +108,7 @@ func testQuery[T any](t *testing.T, name string, tc queryCase[T]) {
 
 		t.Run("all", func(t *testing.T) {
 			all, err := All(ctx, queryer, tc.mapper, query)
-			if diff := cmp.Diff(tc.expectedErr, err, cmp.Comparer(compareMappingError)); diff != "" {
+			if diff := diffErr(tc.expectedErr, err); diff != "" {
 				t.Fatalf("diff: %s", diff)
 			}
 
@@ -119,19 +119,20 @@ func testQuery[T any](t *testing.T, name string, tc queryCase[T]) {
 
 		t.Run("cursor", func(t *testing.T) {
 			c, err := Cursor(ctx, queryer, tc.mapper, query)
-			if diff := cmp.Diff(tc.expectedErr, err, cmp.Comparer(compareMappingError)); diff != "" {
-				t.Fatalf("diff: %s", diff)
-			}
-
 			if err != nil {
+				t.Fatalf("error getting cursor: %v", err)
 				return
 			}
 
 			var i int
 			for c.Next() {
 				v, err := c.Get()
-				if diff := cmp.Diff(tc.expectedErr, err, cmp.Comparer(compareMappingError)); diff != "" {
+				if diff := diffErr(tc.expectedErr, err); diff != "" {
 					t.Fatalf("diff: %s", diff)
+				}
+
+				if err != nil {
+					return
 				}
 
 				if diff := cmp.Diff(tc.expectAll[i], v); diff != "" {
@@ -217,7 +218,7 @@ func TestStruct(t *testing.T) {
 		rows:        rows{[]any{1, "foo", "100", "foobar"}, []any{2, "bar", "200", "barfoo"}},
 		query:       []string{"id", "name", "missing1", "missing2"},
 		mapper:      StructMapper[User](),
-		expectedErr: createError(nil, "no destination", "missing1", "missing2"),
+		expectedErr: createError(nil, "no destination", "missing1"),
 	})
 
 	testQuery(t, "userWithMod", queryCase[*User]{
@@ -226,19 +227,22 @@ func TestStruct(t *testing.T) {
 		query:   []string{"id", "name"},
 		mapper:  StructMapper[*User](),
 		mapperMods: []MapperMod{
-			func(ctx context.Context, c cols) MapperModFunc {
-				return func(v *Values, o any) error {
-					u, ok := o.(*User)
-					if !ok {
-						return errors.New("wrong retrieved type")
-					}
-					if u == nil {
+			func(ctx context.Context, c cols) (BeforeMod, AfterMod) {
+				return func(v *Values) (any, error) {
+						return nil, nil
+					}, func(link, retrieved any) error {
+						u, ok := retrieved.(*User)
+						if !ok {
+							return errors.New("wrong retrieved type")
+						}
+						if u == nil {
+							return nil
+						}
+						u.ID *= 200
+						u.Name += " modified"
+
 						return nil
 					}
-					u.ID *= 200
-					u.Name += " modified"
-					return nil
-				}
 			},
 		},
 		expectOne: &User{ID: 200, Name: "foo modified"},

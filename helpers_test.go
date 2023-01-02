@@ -3,13 +3,16 @@ package scan
 import (
 	"math/rand"
 	"reflect"
+	"strings"
 	"time"
+
+	"github.com/google/go-cmp/cmp"
 )
 
 func ptr[T any](v T) any {
 	val := reflect.ValueOf(v)
 	p := reflect.New(val.Type())
-	p.Elem().Set(reflect.ValueOf(v))
+	p.Elem().Set(val)
 
 	return p.Interface()
 }
@@ -38,4 +41,12 @@ func randate() time.Time {
 
 	sec := rand.Int63n(delta) + min
 	return time.Unix(sec, 0)
+}
+
+func diffErr(expected, got error) string {
+	return cmp.Diff(expected, got, cmp.Transformer("convertMappingErr", convertMappingError))
+}
+
+func convertMappingError(m *MappingError) string {
+	return strings.Join(m.meta, " ")
 }

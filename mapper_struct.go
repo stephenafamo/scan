@@ -13,6 +13,7 @@ import (
 var (
 	colsTyp = reflect.TypeOf(cols{})
 	valsTyp = reflect.TypeOf(&Values{})
+	anyTyp  = reflect.TypeOf((*any)(nil)).Elem()
 	errTyp  = reflect.TypeOf((*error)(nil)).Elem()
 	ctxTyp  = reflect.TypeOf((*context.Context)(nil)).Elem()
 )
@@ -27,9 +28,10 @@ type TypeConverter interface {
 	OriginalValue(reflect.Value) reflect.Value
 }
 
-// RowValidator is called with all the values from a row to determine if the row is valid
+// RowValidator is called with pointer to all the values from a row
+// to determine if the row is valid
 // if it is not, the zero type for that row is returned
-type RowValidator = func(map[string]reflect.Value) bool
+type RowValidator = func(cols []string, vals []reflect.Value) bool
 
 type contextKey string
 
@@ -57,7 +59,7 @@ func CustomStructMapper[T any](src StructMapperSource, optMod ...MappingOption) 
 		o(&opts)
 	}
 
-	mod := func(ctx context.Context, c cols) (func(*Values) error, func(*Values) (T, error)) {
+	mod := func(ctx context.Context, c cols) (func(*Values) (any, error), func(any) (T, error)) {
 		return structMapperFrom[T](ctx, c, src, opts)
 	}
 
@@ -68,21 +70,21 @@ func CustomStructMapper[T any](src StructMapperSource, optMod ...MappingOption) 
 	return mod
 }
 
-func structMapperFrom[T any](ctx context.Context, c cols, s StructMapperSource, opts mappingOptions) (func(*Values) error, func(*Values) (T, error)) {
+func structMapperFrom[T any](ctx context.Context, c cols, s StructMapperSource, opts mappingOptions) (func(*Values) (any, error), func(any) (T, error)) {
 	typ := typeOf[T]()
 
 	isPointer, err := checks(typ)
 	if err != nil {
-		return nil, errorMapper[T](err)
+		return errorMapper[T](err)
 	}
 
 	if m, ok := mappable[T](typ, isPointer); ok {
-		return nil, m(ctx, c)
+		return m(ctx, c)
 	}
 
 	mapping, err := s.getMapping(typ)
 	if err != nil {
-		return nil, errorMapper[T](err)
+		return errorMapper[T](err)
 	}
 
 	return mapperFromMapping[T](mapping, typ, isPointer, opts)(ctx, c)
@@ -111,7 +113,7 @@ func checks(typ reflect.Type) (bool, error) {
 	return isPointer, nil
 }
 
-func mappable[T any](typ reflect.Type, isPointer bool) (func(context.Context, cols) func(*Values) (T, error), bool) {
+func mappable[T any](typ reflect.Type, isPointer bool) (func(context.Context, cols) (func(*Values) (any, error), func(any) (T, error)), bool) {
 	var t, pt reflect.Type
 	if isPointer {
 		t = typ.Elem()
@@ -130,18 +132,21 @@ func mappable[T any](typ reflect.Type, isPointer bool) (func(context.Context, co
 	// If the response type is a pointer
 	var pointerResp bool
 
-	// func(*Values) (T, error)
-	VFunc := reflect.FuncOf([]reflect.Type{valsTyp}, []reflect.Type{t, errTyp}, false)
-	// func(*Values) (*T, error)
-	PVFunc := reflect.FuncOf([]reflect.Type{valsTyp}, []reflect.Type{pt, errTyp}, false)
+	// func(*Values) (any, error)
+	beforeFunc := reflect.FuncOf([]reflect.Type{valsTyp}, []reflect.Type{anyTyp, errTyp}, false)
+
+	// func(any) (T, error)
+	VFunc := reflect.FuncOf([]reflect.Type{anyTyp}, []reflect.Type{t, errTyp}, false)
+	// func(any) (*T, error)
+	PVFunc := reflect.FuncOf([]reflect.Type{anyTyp}, []reflect.Type{pt, errTyp}, false)
 
 	switch methodTyp.Type {
-	// func (*Typ) MapValues(ctx, cols) func(*Values) (T, error)
-	case reflect.FuncOf([]reflect.Type{pt, ctxTyp, colsTyp}, []reflect.Type{VFunc}, false):
+	// func (*Typ) MapValues(ctx, cols) func(*Values) (any, error), func(any) (T, error)
+	case reflect.FuncOf([]reflect.Type{pt, ctxTyp, colsTyp}, []reflect.Type{beforeFunc, VFunc}, false):
 		pointerResp = false
 
-	// func (*Typ) MapValues(ctx, cols) func(*Values) (*T, error)
-	case reflect.FuncOf([]reflect.Type{pt, ctxTyp, colsTyp}, []reflect.Type{PVFunc}, false):
+	// func (*Typ) MapValues(ctx, cols) func(*Values) (any, error), func(any) (*T, error)
+	case reflect.FuncOf([]reflect.Type{pt, ctxTyp, colsTyp}, []reflect.Type{beforeFunc, PVFunc}, false):
 		pointerResp = true
 
 	default:
@@ -153,22 +158,24 @@ func mappable[T any](typ reflect.Type, isPointer bool) (func(context.Context, co
 
 	// same return type... easy
 	if isPointer == pointerResp {
-		return func(ctx context.Context, c cols) func(*Values) (T, error) {
-			return method.Call(
+		return func(ctx context.Context, c cols) (func(*Values) (any, error), func(any) (T, error)) {
+			res := method.Call(
 				[]reflect.Value{reflect.ValueOf(ctx), reflect.ValueOf(c)},
-			)[0].Interface().(func(*Values) (T, error))
+			)
+			return res[0].Interface().(func(*Values) (any, error)),
+				res[1].Interface().(func(any) (T, error))
 		}, true
 	}
 
 	var zero T
 
-	return func(ctx context.Context, c cols) func(*Values) (T, error) {
-		f := method.Call(
+	return func(ctx context.Context, c cols) (func(*Values) (any, error), func(any) (T, error)) {
+		res := method.Call(
 			[]reflect.Value{reflect.ValueOf(ctx), reflect.ValueOf(c)},
-		)[0]
-
-		return func(v *Values) (T, error) {
-			out := f.Call(
+		)
+		before, after := res[0], res[1]
+		return before.Interface().(func(v *Values) (any, error)), func(v any) (T, error) {
+			out := after.Call(
 				[]reflect.Value{reflect.ValueOf(v)},
 			)
 
@@ -178,6 +185,7 @@ func mappable[T any](typ reflect.Type, isPointer bool) (func(context.Context, co
 			}
 
 			val := out[0]
+
 			if pointerResp {
 				return val.Elem().Interface().(T), err
 			}
@@ -468,117 +476,133 @@ func filterColumns(ctx context.Context, c cols, m mapping, prefix string) (mappi
 	return filtered, nil
 }
 
-func mapperFromMapping[T any](m mapping, typ reflect.Type, isPointer bool, opts mappingOptions) func(context.Context, cols) (func(*Values) error, func(*Values) (T, error)) {
-	if isPointer {
-		typ = typ.Elem()
-	}
-
-	typeConverter, hasTypeConverter := opts.typeConverter, opts.typeConverter != nil
-	rowValidator, hasRowValidator := opts.rowValidator, opts.rowValidator != nil
-
-	return func(ctx context.Context, c cols) (func(*Values) error, func(*Values) (T, error)) {
+func mapperFromMapping[T any](m mapping, typ reflect.Type, isPointer bool, opts mappingOptions) func(context.Context, cols) (func(*Values) (any, error), func(any) (T, error)) {
+	return func(ctx context.Context, c cols) (func(*Values) (any, error), func(any) (T, error)) {
 		// Filter the mapping so we only ask for the available columns
 		filtered, err := filterColumns(ctx, c, m, opts.structTagPrefix)
 		if err != nil {
-			return nil, errorMapper[T](err)
+			return errorMapper[T](err)
 		}
 
-		rowTyps := make([]reflect.Type, len(filtered))
-		if hasTypeConverter {
-			for i, info := range filtered {
-				ft := typ.FieldByIndex(info.position).Type
-				rowTyps[i] = typeConverter.ConvertType(ft)
-			}
+		mapper := regular[T]{
+			typ:       typ,
+			isPointer: isPointer,
+			filtered:  filtered,
+			converter: opts.typeConverter,
+			validator: opts.rowValidator,
 		}
+		switch {
+		case opts.typeConverter == nil && opts.rowValidator == nil:
+			return mapper.regular()
 
-		var scannerKey int
-		return func(v *Values) error {
-				row := reflect.New(typ).Elem()
-				scannerKey = v.saveInStore(row)
-
-				if hasTypeConverter {
-					return nil
-				}
-
-				for _, info := range filtered {
-					for _, v := range info.init {
-						pv := row.FieldByIndex(v)
-						if !pv.IsZero() {
-							continue
-						}
-
-						pv.Set(reflect.New(pv.Type().Elem()))
-					}
-
-					fv := row.FieldByIndex(info.position)
-					if err := v.setScanDestination(info.name, fv); err != nil {
-						return err
-					}
-				}
-
-				return nil
-			}, func(v *Values) (T, error) {
-				if v.IsRecording() {
-					var t T
-					return t, nil
-				}
-
-				rowVals := make(map[string]reflect.Value, len(filtered))
-
-				if hasRowValidator {
-					for _, info := range filtered {
-						colName := info.name
-						rowVals[colName] = reflect.ValueOf(v.scanned[v.index(colName)])
-					}
-					if !rowValidator(rowVals) {
-						var zero T
-						return zero, nil
-					}
-				}
-
-				row := v.getFromStore(scannerKey).(reflect.Value)
-
-				if !hasTypeConverter {
-					if isPointer {
-						row = row.Addr()
-					}
-					return row.Interface().(T), nil
-				}
-
-				for i, info := range filtered {
-					for _, v := range info.init {
-						pv := row.FieldByIndex(v)
-						if !pv.IsZero() {
-							continue
-						}
-
-						pv.Set(reflect.New(pv.Type().Elem()))
-					}
-
-					var val reflect.Value
-					if hasRowValidator {
-						val = rowVals[info.name]
-					} else {
-						val = ReflectedValue(v, info.name, rowTyps[i])
-					}
-
-					val = typeConverter.OriginalValue(val)
-
-					fv := row.FieldByIndex(info.position)
-					if info.isPointer {
-						fv.Elem().Set(val)
-					} else {
-						fv.Set(val)
-					}
-				}
-
-				if isPointer {
-					row = row.Addr()
-				}
-
-				return row.Interface().(T), nil
-			}
+		default:
+			return mapper.allOptions()
+		}
 	}
+}
+
+type regular[T any] struct {
+	isPointer bool
+	typ       reflect.Type
+	filtered  mapping
+	converter TypeConverter
+	validator RowValidator
+}
+
+func (s regular[T]) regular() (func(*Values) (any, error), func(any) (T, error)) {
+	return func(v *Values) (any, error) {
+			var row reflect.Value
+			if s.isPointer {
+				row = reflect.New(s.typ.Elem()).Elem()
+			} else {
+				row = reflect.New(s.typ).Elem()
+			}
+
+			for _, info := range s.filtered {
+				for _, v := range info.init {
+					pv := row.FieldByIndex(v)
+					if !pv.IsZero() {
+						continue
+					}
+
+					pv.Set(reflect.New(pv.Type().Elem()))
+				}
+
+				fv := row.FieldByIndex(info.position)
+				v.ScheduleScanx(info.name, fv.Addr())
+			}
+
+			return row, nil
+		}, func(v any) (T, error) {
+			row := v.(reflect.Value)
+
+			if s.isPointer {
+				row = row.Addr()
+			}
+
+			return row.Interface().(T), nil
+		}
+}
+
+func (s regular[T]) allOptions() (func(*Values) (any, error), func(any) (T, error)) {
+	return func(v *Values) (any, error) {
+			row := make([]reflect.Value, len(s.filtered))
+
+			for i, info := range s.filtered {
+				ft := s.typ.FieldByIndex(info.position).Type
+				if s.converter != nil {
+					ft = s.converter.ConvertType(ft)
+				}
+
+				row[i] = reflect.New(ft)
+				v.ScheduleScanx(info.name, row[i])
+			}
+
+			return row, nil
+		}, func(v any) (T, error) {
+			vals := v.([]reflect.Value)
+
+			if s.validator != nil && !s.validator(s.filtered.cols(), vals) {
+				var t T
+				return t, nil
+			}
+
+			var row reflect.Value
+			if s.isPointer {
+				row = reflect.New(s.typ.Elem()).Elem()
+			} else {
+				row = reflect.New(s.typ).Elem()
+			}
+
+			for i, info := range s.filtered {
+				for _, v := range info.init {
+					pv := row.FieldByIndex(v)
+					if !pv.IsZero() {
+						continue
+					}
+
+					pv.Set(reflect.New(pv.Type().Elem()))
+				}
+
+				val := vals[i].Elem()
+				if s.converter != nil {
+					val = s.converter.OriginalValue(val)
+				}
+
+				fv := row.FieldByIndex(info.position)
+				if info.isPointer {
+					fv.Elem().Set(val)
+				} else {
+					fv.Set(val)
+				}
+			}
+
+			if s.isPointer {
+				row = row.Addr()
+			}
+
+			return row.Interface().(T), nil
+		}
 }
 
 //nolint:gochecknoglobals
@@ -589,7 +613,7 @@ func newDefaultMapperSourceImpl() *mapperSourceImpl {
 		fieldMapperFn:   snakeCaseFieldFunc,
 		scannableTypes:  []reflect.Type{reflect.TypeOf((*sql.Scanner)(nil)).Elem()},
 		maxDepth:        3,
-		cache:           make(map[reflect.Type][]mapinfo),
+		cache:           make(map[reflect.Type]mapping),
 	}
 }
 

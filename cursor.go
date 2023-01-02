@@ -14,8 +14,8 @@ type ICursor[T any] interface {
 type cursor[T any] struct {
 	r      Rows
 	v      *Values
-	before func(*Values) error
-	after  func(*Values) (T, error)
+	before func(*Values) (any, error)
+	after  func(any) (T, error)
 }
 
 func (c *cursor[T]) Close() error {

@@ -1,33 +1,51 @@
 package scan
 
-import "context"
+import (
+	"context"
+)
 
 type (
-	MapperMod     = func(context.Context, cols) MapperModFunc
-	MapperModFunc = func(*Values, any) error
+	MapperMod = func(context.Context, cols) (BeforeMod, AfterMod)
+	BeforeMod = func(*Values) (any, error)
+	AfterMod  = func(link any, retrieved any) error
 )
 
 func Mod[T any](m Mapper[T], mods ...MapperMod) Mapper[T] {
-	return func(ctx context.Context, c cols) (func(*Values) error, func(*Values) (T, error)) {
+	return func(ctx context.Context, c cols) (func(*Values) (any, error), func(any) (T, error)) {
 		before, after := m(ctx, c)
-		fs := make([]MapperModFunc, len(mods))
+		befores := make([]BeforeMod, len(mods))
+		afters := make([]AfterMod, len(mods))
+		links := make([]any, len(mods))
 		for i, m := range mods {
-			fs[i] = m(ctx, c)
+			befores[i], afters[i] = m(ctx, c)
 		}
 
-		return before, func(v *Values) (T, error) {
-			t, err := after(v)
-			if err != nil {
-				return t, err
-			}
+		return func(v *Values) (any, error) {
+				a, err := before(v)
+				if err != nil {
+					return nil, err
+				}
 
-			for _, f := range fs {
-				if err := f(v, t); err != nil {
+				for i, b := range befores {
+					if links[i], err = b(v); err != nil {
+						return nil, err
+					}
+				}
+
+				return a, nil
+			}, func(v any) (T, error) {
+				t, err := after(v)
+				if err != nil {
 					return t, err
 				}
-			}
 
-			return t, nil
-		}
+				for i, a := range afters {
+					if err := a(links[i], t); err != nil {
+						return t, err
+					}
+				}
+
+				return t, nil
+			}
 	}
 }
