@@ -3,7 +3,6 @@ package scan
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -63,17 +62,11 @@ func createQuery(tb testing.TB, cols []string) string {
 	return fmt.Sprintf("SELECT|%s|%s|", tb.Name(), strings.Join(cols, ","))
 }
 
-type (
-	strstr = [][2]string
-	rows   = [][]any
-)
-
 type queryCase[T any] struct {
 	columns     strstr
 	rows        rows
 	query       []string // columns to select
 	mapper      Mapper[T]
-	mapperMods  []MapperMod
 	expectOne   T
 	expectAll   []T
 	expectedErr error
@@ -84,9 +77,6 @@ func testQuery[T any](t *testing.T, name string, tc queryCase[T]) {
 
 	t.Run(name, func(t *testing.T) {
 		ctx := context.Background()
-		if len(tc.mapperMods) > 0 {
-			tc.mapper = Mod(tc.mapper, tc.mapperMods...)
-		}
 
 		ex, clean := createDB(t, tc.columns)
 		defer clean()
@@ -123,6 +113,7 @@ func testQuery[T any](t *testing.T, name string, tc queryCase[T]) {
 				t.Fatalf("error getting cursor: %v", err)
 				return
 			}
+			defer c.Close()
 
 			var i int
 			for c.Next() {
@@ -144,6 +135,10 @@ func testQuery[T any](t *testing.T, name string, tc queryCase[T]) {
 
 			if i != len(tc.expectAll) {
 				t.Fatalf("Should have %d rows, but cursor only scanned %d", len(tc.expectAll), i)
+			}
+
+			if diff := diffErr(tc.expectedErr, c.Err()); diff != "" {
+				t.Fatalf("diff: %s", diff)
 			}
 		})
 	})
@@ -178,6 +173,25 @@ func TestSingleValue(t *testing.T) {
 		mapper:    SingleColumnMapper[time.Time],
 		expectOne: time1,
 		expectAll: []time.Time{time1, time2, time3},
+	})
+}
+
+func TestColumnValue(t *testing.T) {
+	testQuery(t, "int", queryCase[int]{
+		columns:   strstr{{"id", "int64"}},
+		rows:      singleRows(1, 2, 3, 5, 8, 13, 21),
+		query:     []string{"id"},
+		mapper:    ColumnMapper[int]("id"),
+		expectOne: 1,
+		expectAll: []int{1, 2, 3, 5, 8, 13, 21},
+	})
+
+	testQuery(t, "unknown", queryCase[int]{
+		columns:     strstr{{"id", "int64"}},
+		rows:        singleRows(1, 2, 3, 5, 8, 13, 21),
+		query:       []string{"id"},
+		mapper:      ColumnMapper[int]("unknown_column"),
+		expectedErr: createError(nil, "unknown_column"),
 	})
 }
 
@@ -222,29 +236,10 @@ func TestStruct(t *testing.T) {
 	})
 
 	testQuery(t, "userWithMod", queryCase[*User]{
-		columns: strstr{{"id", "int64"}, {"name", "string"}},
-		rows:    rows{[]any{1, "foo"}, []any{2, "bar"}},
-		query:   []string{"id", "name"},
-		mapper:  StructMapper[*User](),
-		mapperMods: []MapperMod{
-			func(ctx context.Context, c cols) (BeforeMod, AfterMod) {
-				return func(v *Values) (any, error) {
-						return nil, nil
-					}, func(link, retrieved any) error {
-						u, ok := retrieved.(*User)
-						if !ok {
-							return errors.New("wrong retrieved type")
-						}
-						if u == nil {
-							return nil
-						}
-						u.ID *= 200
-						u.Name += " modified"
-
-						return nil
-					}
-			},
-		},
+		columns:   strstr{{"id", "int64"}, {"name", "string"}},
+		rows:      rows{[]any{1, "foo"}, []any{2, "bar"}},
+		query:     []string{"id", "name"},
+		mapper:    CustomStructMapper[*User](defaultStructMapper, MapperMod(userMod)),
 		expectOne: &User{ID: 200, Name: "foo modified"},
 		expectAll: []*User{
 			{ID: 200, Name: "foo modified"},
@@ -278,12 +273,4 @@ func TestStruct(t *testing.T) {
 			{User: user2, Timestamps: timestamp2},
 		},
 	})
-}
-
-type stdQ struct {
-	*sql.DB
-}
-
-func (s stdQ) QueryContext(ctx context.Context, query string, args ...any) (Rows, error) {
-	return s.DB.QueryContext(ctx, query, args...)
 }

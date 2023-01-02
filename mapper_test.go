@@ -2,20 +2,14 @@ package scan
 
 import (
 	"context"
-	"database/sql"
-	"errors"
+	"fmt"
 	"reflect"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
 )
-
-func toPtr[T any](v T) *T {
-	return &v
-}
 
 type MapperTests[T any] map[string]MapperTest[T]
 
@@ -26,21 +20,6 @@ type MapperTest[T any] struct {
 	ExpectedVal         T
 	ExpectedBeforeError error
 	ExpectedAfterError  error
-}
-
-// To quickly generate column definition for tests
-// make it in the form {"1": 1, "2": 2}
-func columns(n int) []string {
-	m := make([]string, n)
-	for i := 0; i < n; i++ {
-		m[i] = strconv.Itoa(i)
-	}
-
-	return m
-}
-
-func columnNames(names ...string) []string {
-	return names
 }
 
 func RunMapperTests[T any](t *testing.T, cases MapperTests[T]) {
@@ -180,15 +159,6 @@ func TestSingleColumnMapper(t *testing.T) {
 	})
 }
 
-var goodSlice = []any{
-	now,
-	100,
-	"A string",
-	sql.NullString{Valid: false},
-	"another string",
-	[]byte("interesting"),
-}
-
 func TestSliceMapper(t *testing.T) {
 	RunMapperTest(t, "any slice", MapperTest[[]any]{
 		Values: &Values{
@@ -207,15 +177,6 @@ func TestSliceMapper(t *testing.T) {
 		Mapper:      SliceMapper[int],
 		ExpectedVal: []int{100},
 	})
-}
-
-func mapToVals[T any](vals []any) map[string]T {
-	m := make(map[string]T, len(vals))
-	for i, v := range vals {
-		m[strconv.Itoa(i)] = v.(T)
-	}
-
-	return m
 }
 
 func TestMapMapper(t *testing.T) {
@@ -380,6 +341,32 @@ func TestStructMapper(t *testing.T) {
 		ExpectedVal: User{ID: 1, Name: "The Name"},
 	})
 
+	RunMapperTest(t, "with type converter ptr", MapperTest[*User]{
+		Values: &Values{
+			columns: columnNames("id", "name"),
+			scanned: []any{wrapper{1}, wrapper{"The Name"}},
+		},
+		Mapper:      StructMapper[*User](WithTypeConverter(typeConverter{})),
+		ExpectedVal: &User{ID: 1, Name: "The Name"},
+	})
+
+	RunMapperTest(t, "with type converter deep", MapperTest[PtrUser2]{
+		Values: &Values{
+			columns: columnNames("id", "name", "created_at", "updated_at"),
+			scanned: []any{
+				wrapper{1},
+				wrapper{"The Name"},
+				wrapper{now},
+				wrapper{now.Add(time.Hour)},
+			},
+		},
+		Mapper: StructMapper[PtrUser2](WithTypeConverter(typeConverter{})),
+		ExpectedVal: PtrUser2{
+			ID: 1, Name: toPtr("The Name"),
+			PtrTimestamps: &PtrTimestamps{CreatedAt: &now, UpdatedAt: toPtr(now.Add(time.Hour))},
+		},
+	})
+
 	RunMapperTest(t, "with row validator pass", MapperTest[User]{
 		Values: &Values{
 			columns: columnNames("id", "name"),
@@ -419,23 +406,7 @@ func TestStructMapper(t *testing.T) {
 			columns: columnNames("id", "name"),
 			scanned: []any{2, "The Name"},
 		},
-		Mapper: Mod(StructMapper[*User](), func(ctx context.Context, c cols) (BeforeMod, AfterMod) {
-			return func(v *Values) (any, error) {
-					return nil, nil
-				}, func(link, retrieved any) error {
-					u, ok := retrieved.(*User)
-					if !ok {
-						return errors.New("wrong retrieved type")
-					}
-					if u == nil {
-						return nil
-					}
-					u.ID *= 200
-					u.Name += " modified"
-
-					return nil
-				}
-		}),
+		Mapper:      CustomStructMapper[*User](defaultStructMapper, MapperMod(userMod)),
 		ExpectedVal: &User{ID: 400, Name: "The Name modified"},
 	})
 }
@@ -474,73 +445,32 @@ func TestScannable(t *testing.T) {
 	}
 }
 
-var now = time.Now()
+func TestScannableErrors(t *testing.T) {
+	cases := map[string]struct {
+		typ any
+		err error
+	}{
+		"nil": {
+			typ: nil,
+			err: fmt.Errorf("scannable type must be a pointer, got <nil>"),
+		},
+		"non-pointer": {
+			typ: User{},
+			err: fmt.Errorf("scannable type must be a pointer, got struct: scan.User"),
+		},
+		"non-interface": {
+			typ: &User{},
+			err: fmt.Errorf("scannable type must be a pointer to an interface, got struct: scan.User"),
+		},
+	}
 
-type Timestamps struct {
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	for name, test := range cases {
+		t.Run(name, func(t *testing.T) {
+			_, err := NewStructMapperSource(WithScannableTypes(test.typ))
+			if diff := diffErr(test.err, err); diff != "" {
+				t.Fatalf("diff: %s", diff)
+			}
+		})
+	}
 }
 
-type PtrTimestamps struct {
-	CreatedAt *time.Time
-	UpdatedAt *time.Time
-}
-
-type User struct {
-	ID   int
-	Name string
-}
-
-type PtrUser1 struct {
-	ID   *int
-	Name string
-	PtrTimestamps
-}
-
-type PtrUser2 struct {
-	ID   int
-	Name *string
-	*PtrTimestamps
-}
-
-type UserWithTimestamps struct {
-	User
-	*Timestamps
-	Blog *Blog
-}
-
-type Blog struct {
-	ID   int
-	User UserWithTimestamps
-}
-
-type Tagged struct {
-	ID   int    `db:"tag_id" custom:"custom_id"`
-	Name string `db:"tag_name" custom:"custom_name"`
-}
-
-type ScannableUser struct {
-	ID   int
-	Name string
-}
-
-func (s ScannableUser) Scan() {
-}
-
-type wrapper struct {
-	V any
-}
-
-type typeConverter struct{}
-
-func (d typeConverter) ConvertType(typ reflect.Type) reflect.Type {
-	val := reflect.TypeOf(wrapper{
-		V: reflect.New(typ).Interface(),
-	})
-
-	return val
-}
-
-func (d typeConverter) OriginalValue(val reflect.Value) reflect.Value {
-	return val.FieldByName("V").Elem()
-}

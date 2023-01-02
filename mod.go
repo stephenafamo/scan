@@ -5,10 +5,14 @@ import (
 )
 
 type (
-	MapperMod = func(context.Context, cols) (BeforeMod, AfterMod)
+	MapperMod func(context.Context, cols) (BeforeMod, AfterMod)
 	BeforeMod = func(*Values) (any, error)
 	AfterMod  = func(link any, retrieved any) error
 )
+
+func (m MapperMod) apply(o *mappingOptions) {
+	o.mapperMods = append(o.mapperMods, m)
+}
 
 func Mod[T any](m Mapper[T], mods ...MapperMod) Mapper[T] {
 	return func(ctx context.Context, c cols) (func(*Values) (any, error), func(any) (T, error)) {

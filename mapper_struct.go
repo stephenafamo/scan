@@ -48,7 +48,7 @@ func StructMapper[T any](opts ...MappingOption) Mapper[T] {
 func CustomStructMapper[T any](src StructMapperSource, optMod ...MappingOption) Mapper[T] {
 	opts := mappingOptions{}
 	for _, o := range optMod {
-		o(&opts)
+		o.apply(&opts)
 	}
 
 	mod := func(ctx context.Context, c cols) (func(*Values) (any, error), func(any) (T, error)) {
@@ -121,30 +121,38 @@ type StructMapperSource interface {
 }
 
 // MappingeOption is a function type that changes how the mapper is generated
-type MappingOption func(*mappingOptions)
+type MappingOption interface {
+	apply(*mappingOptions)
+}
+
+type mappingOptionFunc[T any] func(*mappingOptions)
+
+func (m mappingOptionFunc[T]) apply(o *mappingOptions) {
+	m(o)
+}
 
 // WithRowValidator sets the [RowValidator] for the struct mapper
 // after scanning all values in a row, they are passed to the RowValidator
 // if it returns false, the zero value for that row is returned
 func WithRowValidator(rv RowValidator) MappingOption {
-	return func(opt *mappingOptions) {
+	return mappingOptionFunc[any](func(opt *mappingOptions) {
 		opt.rowValidator = rv
-	}
+	})
 }
 
 // TypeConverter sets the [TypeConverter] for the struct mapper
 // it is called to modify the type of a column and get the original value back
 func WithTypeConverter(tc TypeConverter) MappingOption {
-	return func(opt *mappingOptions) {
+	return mappingOptionFunc[any](func(opt *mappingOptions) {
 		opt.typeConverter = tc
-	}
+	})
 }
 
 // WithStructTagPrefix should be used when every column from the database has a prefix.
 func WithStructTagPrefix(prefix string) MappingOption {
-	return func(opt *mappingOptions) {
+	return mappingOptionFunc[any](func(opt *mappingOptions) {
 		opt.structTagPrefix = prefix
-	}
+	})
 }
 
 // NewStructMapperSource creates a new Mapping object with provided list of options.
@@ -202,12 +210,13 @@ func WithFieldNameMapper(mapperFn NameMapperFunc) MappingSourceOption {
 //
 // You can pass it to scan this way:
 // scan.WithScannableTypes((*Scanner)(nil)).
-func WithScannableTypes(scannableTypes ...interface{}) MappingSourceOption {
+func WithScannableTypes(scannableTypes ...any) MappingSourceOption {
 	return func(src *mapperSourceImpl) error {
 		for _, stOpt := range scannableTypes {
 			st := reflect.TypeOf(stOpt)
 			if st == nil {
-				return fmt.Errorf("scannable type must be a pointer, got %T", st)
+				fmt.Println("IS NILL")
+				return fmt.Errorf("scannable type must be a pointer, got %T", stOpt)
 			}
 			if st.Kind() != reflect.Ptr {
 				return fmt.Errorf("scannable type must be a pointer, got %s: %s",
@@ -242,10 +251,6 @@ func (s *mapperSourceImpl) getMapping(typ reflect.Type) (mapping, error) {
 
 	if ok {
 		return m, nil
-	}
-
-	if typ == nil {
-		return nil, fmt.Errorf("Nil type passed to StructMapper")
 	}
 
 	s.setMappings(typ, "", make(visited), &m, nil)
@@ -453,7 +458,13 @@ func (s regular[T]) allOptions() (func(*Values) (any, error), func(any) (T, erro
 			row := make([]reflect.Value, len(s.filtered))
 
 			for i, info := range s.filtered {
-				ft := s.typ.FieldByIndex(info.position).Type
+				var ft reflect.Type
+				if s.isPointer {
+					ft = s.typ.Elem().FieldByIndex(info.position).Type
+				} else {
+					ft = s.typ.FieldByIndex(info.position).Type
+				}
+
 				if s.converter != nil {
 					ft = s.converter.ConvertType(ft)
 				}
