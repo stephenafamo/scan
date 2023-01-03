@@ -7,15 +7,11 @@ import (
 type (
 	// MapperMod is a function that can be used to convert an existing mapper
 	// into a new mapper using [Mod]
-	MapperMod func(context.Context, cols) (BeforeFunc, AfterMod)
+	MapperMod = func(context.Context, cols) (BeforeFunc, AfterMod)
 	// AfterMod receives both the link of the [MapperMod] and the retrieved value from
 	// the original mapper
 	AfterMod = func(link any, retrieved any) error
 )
-
-func (m MapperMod) apply(o *mappingOptions) {
-	o.mapperMods = append(o.mapperMods, m)
-}
 
 // Mod converts an existing mapper into a new mapper with [MapperMod]s
 func Mod[T any](m Mapper[T], mods ...MapperMod) Mapper[T] {

@@ -407,7 +407,7 @@ func TestStructMapper(t *testing.T) {
 			columns: columnNames("id", "name"),
 		},
 		scanned:     []any{2, "The Name"},
-		Mapper:      CustomStructMapper[*User](defaultStructMapper, MapperMod(userMod)),
+		Mapper:      CustomStructMapper[*User](defaultStructMapper, WithMapperMods(userMod)),
 		ExpectedVal: &User{ID: 400, Name: "The Name modified"},
 	})
 }

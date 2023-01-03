@@ -155,6 +155,13 @@ func WithStructTagPrefix(prefix string) MappingOption {
 	})
 }
 
+// WithMapperMods accepts mods used to modify the mapper
+func WithMapperMods(mods ...MapperMod) MappingOption {
+	return mappingOptionFunc[any](func(opt *mappingOptions) {
+		opt.mapperMods = append(opt.mapperMods, mods...)
+	})
+}
+
 // NewStructMapperSource creates a new Mapping object with provided list of options.
 func NewStructMapperSource(opts ...MappingSourceOption) (StructMapperSource, error) {
 	src := newDefaultMapperSourceImpl()

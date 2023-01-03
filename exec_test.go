@@ -239,7 +239,7 @@ func TestStruct(t *testing.T) {
 		columns:   strstr{{"id", "int64"}, {"name", "string"}},
 		rows:      rows{[]any{1, "foo"}, []any{2, "bar"}},
 		query:     []string{"id", "name"},
-		mapper:    CustomStructMapper[*User](defaultStructMapper, MapperMod(userMod)),
+		mapper:    CustomStructMapper[*User](defaultStructMapper, WithMapperMods(userMod)),
 		expectOne: &User{ID: 200, Name: "foo modified"},
 		expectAll: []*User{
 			{ID: 200, Name: "foo modified"},
