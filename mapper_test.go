@@ -337,7 +337,7 @@ func TestStructMapper(t *testing.T) {
 		row: &Row{
 			columns: columnNames("id", "name"),
 		},
-		scanned:     []any{wrapper{1}, wrapper{"The Name"}},
+		scanned:     []any{wrapper{toPtr(1)}, wrapper{toPtr("The Name")}},
 		Mapper:      StructMapper[User](WithTypeConverter(typeConverter{})),
 		ExpectedVal: User{ID: 1, Name: "The Name"},
 	})
@@ -346,7 +346,7 @@ func TestStructMapper(t *testing.T) {
 		row: &Row{
 			columns: columnNames("id", "name"),
 		},
-		scanned:     []any{wrapper{1}, wrapper{"The Name"}},
+		scanned:     []any{wrapper{toPtr(1)}, wrapper{toPtr("The Name")}},
 		Mapper:      StructMapper[*User](WithTypeConverter(typeConverter{})),
 		ExpectedVal: &User{ID: 1, Name: "The Name"},
 	})
@@ -356,10 +356,10 @@ func TestStructMapper(t *testing.T) {
 			columns: columnNames("id", "name", "created_at", "updated_at"),
 		},
 		scanned: []any{
-			wrapper{1},
-			wrapper{"The Name"},
-			wrapper{now},
-			wrapper{now.Add(time.Hour)},
+			wrapper{toPtr(1)},
+			wrapper{toPtr("The Name")},
+			wrapper{&now},
+			wrapper{toPtr(now.Add(time.Hour))},
 		},
 		Mapper: StructMapper[PtrUser2](WithTypeConverter(typeConverter{})),
 		ExpectedVal: PtrUser2{

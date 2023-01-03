@@ -3,12 +3,14 @@ module github.com/stephenafamo/scan
 go 1.18
 
 require (
+	github.com/aarondl/opt v0.0.0-20221129170750-3d40c96d9bb8
 	github.com/google/go-cmp v0.5.8
 	github.com/jackc/pgx/v5 v5.2.0
 	github.com/stephenafamo/fakedb v0.0.0-20221230081958-0b86f816ed97
 )
 
 require (
+	github.com/aarondl/json v0.0.0-20221020222930-8b0db17ef1bf // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20200714003250-2b9c44734f2b // indirect
 	golang.org/x/crypto v0.0.0-20220829220503-c86fa9a7ed90 // indirect

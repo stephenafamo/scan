@@ -222,6 +222,15 @@ func TestStruct(t *testing.T) {
 		expectAll: []User{user1, user2},
 	})
 
+	testQuery(t, "user with type converter", queryCase[User]{
+		columns:   strstr{{"id", "int64"}, {"name", "string"}},
+		rows:      rows{[]any{1, "foo"}, []any{2, "bar"}},
+		query:     []string{"id", "name"},
+		mapper:    StructMapper[User](WithTypeConverter(typeConverter{})),
+		expectOne: user1,
+		expectAll: []User{user1, user2},
+	})
+
 	testQuery(t, "user with unknown column", queryCase[User]{
 		columns: strstr{
 			{"id", "int64"},

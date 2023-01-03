@@ -4,12 +4,14 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"math/rand"
 	"reflect"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/aarondl/opt"
 	"github.com/google/go-cmp/cmp"
 )
 
@@ -94,18 +96,32 @@ type wrapper struct {
 	V any
 }
 
+// Scan implements the sql.Scanner interface. If the wrapped type implements
+// sql.Scanner then it will call that.
+func (v *wrapper) Scan(value any) error {
+	if scanner, ok := v.V.(sql.Scanner); ok {
+		return scanner.Scan(value)
+	}
+
+	if err := opt.ConvertAssign(v.V, value); err != nil {
+		return fmt.Errorf("convert assign err: %w", err)
+	}
+
+	return nil
+}
+
 type typeConverter struct{}
 
-func (d typeConverter) ConvertType(typ reflect.Type) reflect.Type {
-	val := reflect.TypeOf(wrapper{
+func (d typeConverter) TypeToDestination(typ reflect.Type) reflect.Value {
+	val := reflect.ValueOf(&wrapper{
 		V: reflect.New(typ).Interface(),
 	})
 
 	return val
 }
 
-func (d typeConverter) OriginalValue(val reflect.Value) reflect.Value {
-	return val.FieldByName("V").Elem()
+func (d typeConverter) ValueFromDestination(val reflect.Value) reflect.Value {
+	return val.Elem().FieldByName("V").Elem().Elem()
 }
 
 func toPtr[T any](v T) *T {
