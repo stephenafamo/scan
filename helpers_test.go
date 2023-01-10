@@ -81,6 +81,7 @@ type Blog struct {
 type Tagged struct {
 	ID      int    `db:"tag_id" custom:"custom_id"`
 	Name    string `db:"tag_name" custom:"custom_name"`
+	Email   string `db:"EMAIL"`
 	Exclude int    `db:"-" custom:"-"`
 }
 

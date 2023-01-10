@@ -195,12 +195,12 @@ func (s *mapperSourceImpl) setMappings(typ reflect.Type, prefix string, v visite
 				sep = s.columnSeparator
 			}
 
-			name := field.Name
-			if tag != "" {
-				name = tag
+			name := tag
+			if tag == "" {
+				name = s.fieldMapperFn(field.Name)
 			}
 
-			key = strings.Join([]string{key, s.fieldMapperFn(name)}, sep)
+			key = strings.Join([]string{key, name}, sep)
 		}
 
 		currentIndex := append(position, i)

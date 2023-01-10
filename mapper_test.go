@@ -263,11 +263,11 @@ func TestStructMapper(t *testing.T) {
 
 	RunMapperTest(t, "tagged", MapperTest[Tagged]{
 		row: &Row{
-			columns: columnNames("tag_id", "tag_name"),
+			columns: columnNames("tag_id", "tag_name", "EMAIL"),
 		},
-		scanned:     []any{1, "The Name"},
+		scanned:     []any{1, "The Name", "user@example.com"},
 		Mapper:      StructMapper[Tagged](),
-		ExpectedVal: Tagged{ID: 1, Name: "The Name"},
+		ExpectedVal: Tagged{ID: 1, Name: "The Name", Email: "user@example.com"},
 	})
 
 	RunCustomStructMapperTest(t, "custom column separator", CustomStructMapperTest[Blog]{
