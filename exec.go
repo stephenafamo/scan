@@ -31,6 +31,9 @@ func OneFromRows[T any](ctx context.Context, m Mapper[T], rows Rows) (T, error) 
 	before, after := m(ctx, v.columnsCopy())
 
 	if !rows.Next() {
+		if err = rows.Err(); err != nil {
+			return t, err
+		}
 		return t, sql.ErrNoRows
 	}
 
