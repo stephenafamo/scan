@@ -30,7 +30,7 @@ func newDefaultMapperSourceImpl() *mapperSourceImpl {
 		fieldMapperFn:   snakeCaseFieldFunc,
 		scannableTypes:  []reflect.Type{reflect.TypeOf((*sql.Scanner)(nil)).Elem()},
 		maxDepth:        3,
-		cache:           make(map[reflect.Type]mapping),
+		cache:           make(map[reflect.Type]Mapping),
 	}
 }
 
@@ -118,11 +118,11 @@ type mapperSourceImpl struct {
 	fieldMapperFn   func(string) string
 	scannableTypes  []reflect.Type
 	maxDepth        int
-	cache           map[reflect.Type]mapping
+	cache           map[reflect.Type]Mapping
 	mutex           sync.RWMutex
 }
 
-func (s *mapperSourceImpl) getMapping(typ reflect.Type) (mapping, error) {
+func (s *mapperSourceImpl) GetMapping(typ reflect.Type) (Mapping, error) {
 	s.mutex.RLock()
 	m, ok := s.cache[typ]
 	s.mutex.RUnlock()
@@ -140,7 +140,7 @@ func (s *mapperSourceImpl) getMapping(typ reflect.Type) (mapping, error) {
 	return m, nil
 }
 
-func (s *mapperSourceImpl) setMappings(typ reflect.Type, prefix string, v visited, m *mapping, inits [][]int, position ...int) {
+func (s *mapperSourceImpl) setMappings(typ reflect.Type, prefix string, v visited, m *Mapping, inits [][]int, position ...int) {
 	count := v[typ]
 	if count > s.maxDepth {
 		return
@@ -160,10 +160,10 @@ func (s *mapperSourceImpl) setMappings(typ reflect.Type, prefix string, v visite
 	for _, scannable := range s.scannableTypes {
 		if reflect.PtrTo(typ).Implements(scannable) {
 			*m = append(*m, mapinfo{
-				name:      prefix,
-				position:  position,
-				init:      inits,
-				isPointer: isPointer,
+				Name:      prefix,
+				Position:  position,
+				Init:      inits,
+				IsPointer: isPointer,
 			})
 			return
 		}
@@ -219,10 +219,10 @@ func (s *mapperSourceImpl) setMappings(typ reflect.Type, prefix string, v visite
 		}
 
 		*m = append(*m, mapinfo{
-			name:      key,
-			position:  currentIndex,
-			init:      inits,
-			isPointer: isPointer,
+			Name:      key,
+			Position:  currentIndex,
+			Init:      inits,
+			IsPointer: isPointer,
 		})
 	}
 
@@ -230,17 +230,17 @@ func (s *mapperSourceImpl) setMappings(typ reflect.Type, prefix string, v visite
 	// directly scan into it
 	if !hasExported {
 		*m = append(*m, mapinfo{
-			name:      prefix,
-			position:  position,
-			init:      inits,
-			isPointer: isPointer,
+			Name:      prefix,
+			Position:  position,
+			Init:      inits,
+			IsPointer: isPointer,
 		})
 	}
 }
 
-func filterColumns(ctx context.Context, c cols, m mapping, prefix string) (mapping, error) {
+func filterColumns(ctx context.Context, c cols, m Mapping, prefix string) (Mapping, error) {
 	// Filter the mapping so we only ask for the available columns
-	filtered := make(mapping, 0, len(c))
+	filtered := make(Mapping, 0, len(c))
 	for _, name := range c {
 		key := name
 		if prefix != "" {
@@ -252,8 +252,8 @@ func filterColumns(ctx context.Context, c cols, m mapping, prefix string) (mappi
 		}
 
 		for _, info := range m {
-			if key == info.name {
-				info.name = name
+			if key == info.Name {
+				info.Name = name
 				filtered = append(filtered, info)
 				break
 			}
