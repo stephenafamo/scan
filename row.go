@@ -17,6 +17,7 @@ func wrapRows(r Rows, allowUnknown bool) (*Row, error) {
 		r:                r,
 		columns:          cols,
 		scanDestinations: make([]reflect.Value, len(cols)),
+		allowUnknown:     allowUnknown,
 	}, nil
 }
 
@@ -64,6 +65,21 @@ func (r *Row) scanCurrentRow() error {
 		return createError(fmt.Errorf("unknown columns to map to: %v", r.unknownDestinations), r.unknownDestinations...)
 	}
 
+	targets, err := r.createTargets()
+	if err != nil {
+		return err
+	}
+
+	err = r.r.Scan(targets...)
+	if err != nil {
+		return err
+	}
+
+	r.scanDestinations = make([]reflect.Value, len(r.columns))
+	return nil
+}
+
+func (r *Row) createTargets() ([]any, error) {
 	targets := make([]any, len(r.columns))
 
 	for i, name := range r.columns {
@@ -75,15 +91,14 @@ func (r *Row) scanCurrentRow() error {
 
 		if !r.allowUnknown {
 			err := fmt.Errorf("No destination for column %s", name)
-			return createError(err, "no destination", name)
+			return nil, createError(err, "no destination", name)
 		}
+
+		// See https://github.com/golang/go/issues/41607:
+		// Some drivers cannot work with nil values, so valid pointers should be
+		// used for all column targets, even if they are discarded afterwards.
+		targets[i] = new(interface{})
 	}
 
-	err := r.r.Scan(targets...)
-	if err != nil {
-		return err
-	}
-
-	r.scanDestinations = make([]reflect.Value, len(r.columns))
-	return nil
+	return targets, nil
 }

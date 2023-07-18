@@ -63,6 +63,7 @@ func createQuery(tb testing.TB, cols []string) string {
 }
 
 type queryCase[T any] struct {
+	ctx         context.Context
 	columns     strstr
 	rows        rows
 	query       []string // columns to select
@@ -76,7 +77,10 @@ func testQuery[T any](t *testing.T, name string, tc queryCase[T]) {
 	t.Helper()
 
 	t.Run(name, func(t *testing.T) {
-		ctx := context.Background()
+		ctx := tc.ctx
+		if ctx == nil {
+			ctx = context.Background()
+		}
 
 		ex, clean := createDB(t, tc.columns)
 		defer clean()
@@ -281,5 +285,32 @@ func TestStruct(t *testing.T) {
 			{User: user1, Timestamps: timestamp1},
 			{User: user2, Timestamps: timestamp2},
 		},
+	})
+}
+
+func TestAllowUnknownColumns(t *testing.T) {
+	type testStruct struct {
+		ID  int64
+		Int int64
+	}
+
+	// fails when context does not have CtxKeyAllowUnknownColumns set to true
+	testQuery(t, "unknowncolumnsnotallowed", queryCase[testStruct]{
+		columns:     strstr{{"id", "int64"}, {"ignored_int", "int64"}, {"int", "int64"}},
+		rows:        rows{{1, 10, 1}, {2, 20, 2}},
+		query:       []string{"id", "ignored_int", "int"},
+		mapper:      StructMapper[testStruct](),
+		expectedErr: createError(fmt.Errorf("No destination for column ignored_int"), "no destination", "ignored_int"),
+	})
+
+	// succeeds when context has CtxKeyAllowUnknownColumns set to true
+	testQuery(t, "unknowncolumnsallowed", queryCase[testStruct]{
+		ctx:       context.WithValue(context.Background(), CtxKeyAllowUnknownColumns, true),
+		columns:   strstr{{"id", "int64"}, {"ignored_int", "int64"}, {"int", "int64"}},
+		rows:      rows{{1, 10, 1}, {2, 20, 2}},
+		query:     []string{"id", "ignored_int", "int"},
+		mapper:    StructMapper[testStruct](),
+		expectOne: testStruct{ID: 1, Int: 1},
+		expectAll: []testStruct{{ID: 1, Int: 1}, {ID: 2, Int: 2}},
 	})
 }
