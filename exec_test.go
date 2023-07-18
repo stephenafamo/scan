@@ -77,9 +77,9 @@ func testQuery[T any](t *testing.T, name string, tc queryCase[T]) {
 	t.Helper()
 
 	t.Run(name, func(t *testing.T) {
-		ctx := context.Background()
-		if tc.ctx != nil {
-			ctx = tc.ctx
+		ctx := tc.ctx
+		if ctx == nil {
+			ctx = context.Background()
 		}
 
 		ex, clean := createDB(t, tc.columns)
