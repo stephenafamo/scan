@@ -22,18 +22,18 @@ func (v visited) copy() visited {
 }
 
 type mapinfo struct {
-	Name      string
-	Position  []int
-	Init      [][]int
-	IsPointer bool
+	name      string
+	position  []int
+	init      [][]int
+	isPointer bool
 }
 
-type Mapping []mapinfo
+type mapping []mapinfo
 
-func (m Mapping) cols() []string {
+func (m mapping) cols() []string {
 	cols := make([]string, len(m))
 	for i, info := range m {
-		cols[i] = info.Name
+		cols[i] = info.name
 	}
 
 	return cols

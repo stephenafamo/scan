@@ -42,7 +42,7 @@ func structMapperFrom[T any](ctx context.Context, c cols, s StructMapperSource, 
 		return ErrorMapper[T](err)
 	}
 
-	mapping, err := s.GetMapping(typ)
+	mapping, err := s.getMapping(typ)
 	if err != nil {
 		return ErrorMapper[T](err)
 	}
@@ -114,7 +114,7 @@ func WithMapperMods(mods ...MapperMod) MappingOption {
 	}
 }
 
-func mapperFromMapping[T any](m Mapping, typ reflect.Type, isPointer bool, opts mappingOptions) func(context.Context, cols) (func(*Row) (any, error), func(any) (T, error)) {
+func mapperFromMapping[T any](m mapping, typ reflect.Type, isPointer bool, opts mappingOptions) func(context.Context, cols) (func(*Row) (any, error), func(any) (T, error)) {
 	return func(ctx context.Context, c cols) (func(*Row) (any, error), func(any) (T, error)) {
 		// Filter the mapping so we only ask for the available columns
 		filtered, err := filterColumns(ctx, c, m, opts.structTagPrefix)
@@ -142,7 +142,7 @@ func mapperFromMapping[T any](m Mapping, typ reflect.Type, isPointer bool, opts 
 type regular[T any] struct {
 	isPointer bool
 	typ       reflect.Type
-	filtered  Mapping
+	filtered  mapping
 	converter TypeConverter
 	validator RowValidator
 }
@@ -157,7 +157,7 @@ func (s regular[T]) regular() (func(*Row) (any, error), func(any) (T, error)) {
 			}
 
 			for _, info := range s.filtered {
-				for _, v := range info.Init {
+				for _, v := range info.init {
 					pv := row.FieldByIndex(v)
 					if !pv.IsZero() {
 						continue
@@ -166,8 +166,8 @@ func (s regular[T]) regular() (func(*Row) (any, error), func(any) (T, error)) {
 					pv.Set(reflect.New(pv.Type().Elem()))
 				}
 
-				fv := row.FieldByIndex(info.Position)
-				v.ScheduleScanx(info.Name, fv.Addr())
+				fv := row.FieldByIndex(info.position)
+				v.ScheduleScanx(info.name, fv.Addr())
 			}
 
 			return row, nil
@@ -189,9 +189,9 @@ func (s regular[T]) allOptions() (func(*Row) (any, error), func(any) (T, error))
 			for i, info := range s.filtered {
 				var ft reflect.Type
 				if s.isPointer {
-					ft = s.typ.Elem().FieldByIndex(info.Position).Type
+					ft = s.typ.Elem().FieldByIndex(info.position).Type
 				} else {
-					ft = s.typ.FieldByIndex(info.Position).Type
+					ft = s.typ.FieldByIndex(info.position).Type
 				}
 
 				if s.converter != nil {
@@ -200,7 +200,7 @@ func (s regular[T]) allOptions() (func(*Row) (any, error), func(any) (T, error))
 					row[i] = reflect.New(ft)
 				}
 
-				v.ScheduleScanx(info.Name, row[i])
+				v.ScheduleScanx(info.name, row[i])
 			}
 
 			return row, nil
@@ -220,7 +220,7 @@ func (s regular[T]) allOptions() (func(*Row) (any, error), func(any) (T, error))
 			}
 
 			for i, info := range s.filtered {
-				for _, v := range info.Init {
+				for _, v := range info.init {
 					pv := row.FieldByIndex(v)
 					if !pv.IsZero() {
 						continue
@@ -236,8 +236,8 @@ func (s regular[T]) allOptions() (func(*Row) (any, error), func(any) (T, error))
 					val = vals[i].Elem()
 				}
 
-				fv := row.FieldByIndex(info.Position)
-				if info.IsPointer {
+				fv := row.FieldByIndex(info.position)
+				if info.isPointer {
 					fv.Elem().Set(val)
 				} else {
 					fv.Set(val)

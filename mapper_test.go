@@ -429,14 +429,14 @@ func TestScannable(t *testing.T) {
 		t.Fatalf("couldn't get mapper source: %v", err)
 	}
 
-	m, err := src.GetMapping(reflect.TypeOf(BlogWithScannableUser{}))
+	m, err := src.getMapping(reflect.TypeOf(BlogWithScannableUser{}))
 	if err != nil {
 		t.Fatalf("couldn't get mapping: %v", err)
 	}
 
 	var marked bool
 	for _, info := range m {
-		if info.Name == "user" {
+		if info.name == "user" {
 			marked = true
 		}
 	}
