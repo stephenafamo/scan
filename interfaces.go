@@ -39,5 +39,5 @@ type TypeConverter interface {
 type RowValidator = func(cols []string, vals []reflect.Value) bool
 
 type StructMapperSource interface {
-	GetMapping(reflect.Type) (Mapping, error)
+	getMapping(reflect.Type) (mapping, error)
 }
