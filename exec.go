@@ -89,6 +89,42 @@ func Cursor[T any](ctx context.Context, exec Queryer, m Mapper[T], query string,
 	return CursorFromRows(ctx, m, rows)
 }
 
+// Each returns a function that can be used to iterate over the rows of a query
+// this function works with range-over-func so it is possible to do
+//
+//	for val, err := range scan.Each(ctx, exec, m, query, args...) {
+//	    if err != nil {
+//	        return err
+//	    }
+//	    // do something with val
+//	}
+func Each[T any](ctx context.Context, exec Queryer, m Mapper[T], query string, args ...any) func(func(T, error) bool) {
+	rows, err := exec.QueryContext(ctx, query, args...)
+	if err != nil {
+		return func(yield func(T, error) bool) { yield(*new(T), err) }
+	}
+
+	allowUnknown, _ := ctx.Value(CtxKeyAllowUnknownColumns).(bool)
+	wrapped, err := wrapRows(rows, allowUnknown)
+	if err != nil {
+		rows.Close()
+		return func(yield func(T, error) bool) { yield(*new(T), err) }
+	}
+
+	before, after := m(ctx, wrapped.columnsCopy())
+
+	return func(yield func(T, error) bool) {
+		defer rows.Close()
+
+		for rows.Next() {
+			val, err := scanOneRow(wrapped, before, after)
+			if !yield(val, err) {
+				return
+			}
+		}
+	}
+}
+
 // CursorFromRows returns a cursor from [Rows] that works similar to *sql.Rows
 func CursorFromRows[T any](ctx context.Context, m Mapper[T], rows Rows) (ICursor[T], error) {
 	allowUnknown, _ := ctx.Value(CtxKeyAllowUnknownColumns).(bool)

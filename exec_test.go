@@ -111,6 +111,28 @@ func testQuery[T any](t *testing.T, name string, tc queryCase[T]) {
 			}
 		})
 
+		t.Run("each", func(t *testing.T) {
+			var i int
+			Each(ctx, queryer, tc.mapper, query)(func(val T, err error) bool {
+				if diff := diffErr(tc.expectedErr, err); diff != "" {
+					t.Fatalf("diff: %s", diff)
+				}
+
+				if err != nil {
+					return false
+				}
+
+				if diff := cmp.Diff(tc.expectAll[i], val); diff != "" {
+					t.Fatalf("diff: %s", diff)
+				}
+				i++
+				return true
+			})
+			if i != len(tc.expectAll) {
+				t.Fatalf("Should have %d rows, but each only scanned %d", len(tc.expectAll), i)
+			}
+		})
+
 		t.Run("cursor", func(t *testing.T) {
 			c, err := Cursor(ctx, queryer, tc.mapper, query)
 			if err != nil {

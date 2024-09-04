@@ -11,9 +11,9 @@ Scan provides the ability to use database/sql/rows to scan datasets directly to 
 
 ## Reference
 
-* Standard library scan package. For use with `database/sql`. [Link](https://pkg.go.dev/github.com/stephenafamo/scan/stdscan)
-* PGX library scan package. For use with `github.com/jackc/pgx/v5`. [Link](https://pkg.go.dev/github.com/stephenafamo/scan/pgxscan)
-* Base scan package. For use with any implementation of [`scan.Queryer`](https://pkg.go.dev/github.com/stephenafamo/scan#Queryer). [Link](https://pkg.go.dev/github.com/stephenafamo/scan)
+- Standard library scan package. For use with `database/sql`. [Link](https://pkg.go.dev/github.com/stephenafamo/scan/stdscan)
+- PGX library scan package. For use with `github.com/jackc/pgx/v5`. [Link](https://pkg.go.dev/github.com/stephenafamo/scan/pgxscan)
+- Base scan package. For use with any implementation of [`scan.Queryer`](https://pkg.go.dev/github.com/stephenafamo/scan#Queryer). [Link](https://pkg.go.dev/github.com/stephenafamo/scan)
 
 ## Using with `database/sql`
 
@@ -39,7 +39,7 @@ func main() {
     ctx := context.Background()
     db, _ := sql.Open("postgres", "example-connection-url")
 
-    // count: 5 
+    // count: 5
     count, _ := stdscan.One(ctx, db, scan.SingleColumnMapper[int], "SELECT COUNT(*) FROM users")
     // []int{1, 2, 3, 4, 5}
     userIDs, _ := stdscan.All(ctx, db, scan.SingleColumnMapper[int], "SELECT id FROM users")
@@ -93,6 +93,23 @@ Use `All()` to scan and return **all** rows.
 users, _ := stdscan.All(ctx, db, scan.StructMapper[User](), `SELECT id, name, email, age FROM users`)
 ```
 
+#### `Each()`
+
+Use `Each()` to iterate over the rows of a query using range.
+
+It works with the [range-over-func](https://tip.golang.org/blog/range-functions) syntax.
+
+```go
+// []User{...}
+users, _ := stdscan.All(ctx, db, scan.StructMapper[User](), `SELECT id, name, email, age FROM users`)
+for user, err := range scan.Each(ctx, db, scan.StructMapper[User](), `SELECT id, name, email, age FROM users`) {
+    if err != nil {
+        return err
+    }
+    // do something with user
+}
+```
+
 #### `Cursor()`
 
 Use `Cursor()` to scan each row on demand. This is useful when retrieving large results.
@@ -120,8 +137,8 @@ type BeforeFunc = func(*Row) (link any, err error)
 
 A mapper returns 2 functions
 
-* **before**: This is called before scanning the row. The mapper should schedule scans using the `ScheduleScan` or `ScheduleScanx` methods of the `Row`. The return value of the **before** function is passed to the **after** function after scanning values from the database.
-* **after**: This is called after the scan operation. The mapper should then covert the link value back to the desired concrete type.
+- **before**: This is called before scanning the row. The mapper should schedule scans using the `ScheduleScan` or `ScheduleScanx` methods of the `Row`. The return value of the **before** function is passed to the **after** function after scanning values from the database.
+- **after**: This is called after the scan operation. The mapper should then covert the link value back to the desired concrete type.
 
 There are some builtin mappers for common cases:
 
@@ -188,17 +205,17 @@ users, _ := stdscan.All(ctx, db, scan.StructMapper[User](), `SELECT id, name, em
 
 The default behaviour of `StructMapper` is often good enough. For more advanced use cases, some options can be passed to the StructMapper.
 
-* **WithStructTagPrefix**: Use this when every column from the database has a prefix.
+- **WithStructTagPrefix**: Use this when every column from the database has a prefix.
 
-    ```go
-    users, _ := stdscan.All(ctx, db, scan.StructMapper[User](scan.WithStructTagPrefix("user-")),
-        `SELECT id AS "user-id", name AS "user-name" FROM users`,
-    )
-    ```
+  ```go
+  users, _ := stdscan.All(ctx, db, scan.StructMapper[User](scan.WithStructTagPrefix("user-")),
+      `SELECT id AS "user-id", name AS "user-name" FROM users`,
+  )
+  ```
 
-* **WithRowValidator**: If the `StructMapper` has a row validator, the values will be sent to it before scanning. If the row is invalid (i.e. it returns false), then scanning is skipped and the zero value of the row-type is returned.
+- **WithRowValidator**: If the `StructMapper` has a row validator, the values will be sent to it before scanning. If the row is invalid (i.e. it returns false), then scanning is skipped and the zero value of the row-type is returned.
 
-* **WithTypeConverter**: If the `StructMapper` has a type converter, all fields of the struct are converted to a new type using the `ConverType` method. After scanning, the values are restored into the struct using the `OriginalValue` method.
+- **WithTypeConverter**: If the `StructMapper` has a type converter, all fields of the struct are converted to a new type using the `ConverType` method. After scanning, the values are restored into the struct using the `OriginalValue` method.
 
 #### `CustomStructMapper[T any](MapperSource, ...MappingSourceOption)`
 
@@ -223,7 +240,7 @@ users, _ := stdscan.All(ctx, db, scan.StructMapper[User](), `SELECT id, name, em
 
 These are the options that can be passed to `NewStructMapperSource`:
 
-* **WithStructTagKey**: Change the struct tag used to map columns to struct fields. Default: **db**
-* **WithColumnSeparator**: Change the separator for column names of nested struct fields. Default: **.**
-* **WithFieldNameMapper**: Change how Struct field names are mapped to column names when there are no struct tags. Default: **snake_case** (i.e. `CreatedAt` is mapped to `created_at`).
-* **WithScannableTypes**: Pass a list of interfaces that if implemented, can be scanned by the executor. This means that a field with this type is treated as a single value and will not check the nested fields. Default: `*sql.Scanner`.
+- **WithStructTagKey**: Change the struct tag used to map columns to struct fields. Default: **db**
+- **WithColumnSeparator**: Change the separator for column names of nested struct fields. Default: **.**
+- **WithFieldNameMapper**: Change how Struct field names are mapped to column names when there are no struct tags. Default: **snake_case** (i.e. `CreatedAt` is mapped to `created_at`).
+- **WithScannableTypes**: Pass a list of interfaces that if implemented, can be scanned by the executor. This means that a field with this type is treated as a single value and will not check the nested fields. Default: `*sql.Scanner`.
