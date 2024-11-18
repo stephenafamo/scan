@@ -25,6 +25,19 @@ func Cursor[T any](ctx context.Context, exec Queryer, m scan.Mapper[T], sql stri
 	return scan.Cursor(ctx, convert(exec), m, sql, args...)
 }
 
+// Each returns a function that can be used to iterate over the rows of a query
+// this function works with range-over-func so it is possible to do
+//
+//	for val, err := range scan.Each(ctx, exec, m, query, args...) {
+//	    if err != nil {
+//	        return err
+//	    }
+//	    // do something with val
+//	}
+func Each[T any](ctx context.Context, exec Queryer, m scan.Mapper[T], query string, args ...any) func(func(T, error) bool) {
+	return scan.Each(ctx, convert(exec), m, query, args...)
+}
+
 // A Queryer that returns the concrete type [*sql.Rows]
 type Queryer interface {
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
