@@ -101,7 +101,6 @@ It works with the [range-over-func](https://tip.golang.org/blog/range-functions)
 
 ```go
 // []User{...}
-users, _ := stdscan.All(ctx, db, scan.StructMapper[User](), `SELECT id, name, email, age FROM users`)
 for user, err := range scan.Each(ctx, db, scan.StructMapper[User](), `SELECT id, name, email, age FROM users`) {
     if err != nil {
         return err
