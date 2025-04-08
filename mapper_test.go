@@ -77,6 +77,31 @@ type CustomStructMapperTest[T any] struct {
 	Options []MappingSourceOption
 }
 
+func RunStructMapperTest[T any](t *testing.T, name string, tc MapperTest[T]) {
+	t.Helper()
+	RunMapperTest(t, name, tc)
+
+	allowUnknown, _ := tc.Context[CtxKeyAllowUnknownColumns].(bool)
+	if allowUnknown {
+		return
+	}
+
+	cols, err := StructMapperColumns[T]()
+	if err != nil {
+		t.Fatalf("couldn't get columns: %v", err)
+	}
+
+ColumnLoop:
+	for _, col := range tc.row.columns {
+		for _, c := range cols {
+			if col == c {
+				continue ColumnLoop
+			}
+		}
+		t.Fatalf("column %s not found in struct mapper columns", col)
+	}
+}
+
 func RunCustomStructMapperTest[T any](t *testing.T, name string, tc CustomStructMapperTest[T]) {
 	t.Helper()
 	m := tc.MapperTest
@@ -90,6 +115,26 @@ func RunCustomStructMapperTest[T any](t *testing.T, name string, tc CustomStruct
 
 	m.Mapper = CustomStructMapper[T](src)
 	RunMapperTest(t, name, m)
+
+	allowUnknown, _ := tc.Context[CtxKeyAllowUnknownColumns].(bool)
+	if allowUnknown {
+		return
+	}
+
+	cols, err := CustomStructMapperColumns[T](src)
+	if err != nil {
+		t.Fatalf("couldn't get columns: %v", err)
+	}
+
+ColumnLoop:
+	for _, col := range tc.row.columns {
+		for _, c := range cols {
+			if col == c {
+				continue ColumnLoop
+			}
+		}
+		t.Fatalf("column %s not found in struct mapper columns", col)
+	}
 }
 
 func TestColumnMapper(t *testing.T) {
@@ -192,7 +237,7 @@ func TestMapMapper(t *testing.T) {
 }
 
 func TestStructMapper(t *testing.T) {
-	RunMapperTest(t, "Unknown cols permitted", MapperTest[User]{
+	RunStructMapperTest(t, "Unknown cols permitted", MapperTest[User]{
 		row: &Row{
 			columns: columnNames("random"),
 		},
@@ -201,7 +246,7 @@ func TestStructMapper(t *testing.T) {
 		ExpectedVal: User{},
 	})
 
-	RunMapperTest(t, "flat struct", MapperTest[User]{
+	RunStructMapperTest(t, "flat struct", MapperTest[User]{
 		row: &Row{
 			columns: columnNames("id", "name"),
 		},
@@ -210,7 +255,7 @@ func TestStructMapper(t *testing.T) {
 		ExpectedVal: User{ID: 1, Name: "The Name"},
 	})
 
-	RunMapperTest(t, "with pointer columns 1", MapperTest[PtrUser1]{
+	RunStructMapperTest(t, "with pointer columns 1", MapperTest[PtrUser1]{
 		row: &Row{
 			columns: columnNames("id", "name", "created_at", "updated_at"),
 		},
@@ -222,7 +267,7 @@ func TestStructMapper(t *testing.T) {
 		},
 	})
 
-	RunMapperTest(t, "with pointer columns 2", MapperTest[PtrUser2]{
+	RunStructMapperTest(t, "with pointer columns 2", MapperTest[PtrUser2]{
 		row: &Row{
 			columns: columnNames("id", "name", "created_at", "updated_at"),
 		},
@@ -234,7 +279,7 @@ func TestStructMapper(t *testing.T) {
 		},
 	})
 
-	RunMapperTest(t, "anonymous embeds", MapperTest[UserWithTimestamps]{
+	RunStructMapperTest(t, "anonymous embeds", MapperTest[UserWithTimestamps]{
 		row: &Row{
 			columns: columnNames("id", "name", "created_at", "updated_at"),
 		},
@@ -246,7 +291,7 @@ func TestStructMapper(t *testing.T) {
 		},
 	})
 
-	RunMapperTest(t, "prefixed structs", MapperTest[Blog]{
+	RunStructMapperTest(t, "prefixed structs", MapperTest[Blog]{
 		row: &Row{
 			columns: columnNames("id", "user.id", "user.name", "user.created_at"),
 		},
@@ -261,7 +306,7 @@ func TestStructMapper(t *testing.T) {
 		},
 	})
 
-	RunMapperTest(t, "tagged", MapperTest[Tagged]{
+	RunStructMapperTest(t, "tagged", MapperTest[Tagged]{
 		row: &Row{
 			columns: columnNames("tag_id", "tag_name", "EMAIL"),
 		},
