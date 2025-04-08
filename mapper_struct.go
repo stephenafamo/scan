@@ -15,6 +15,10 @@ func StructMapper[T any](opts ...MappingOption) Mapper[T] {
 	return CustomStructMapper[T](defaultStructMapper, opts...)
 }
 
+func StructMapperColumns[T any](opts ...MappingOption) ([]string, error) {
+	return CustomStructMapperColumns[T](defaultStructMapper, opts...)
+}
+
 // Uses reflection to create a mapping function for a struct type
 // using with custom options
 func CustomStructMapper[T any](src StructMapperSource, optMod ...MappingOption) Mapper[T] {
@@ -32,6 +36,31 @@ func CustomStructMapper[T any](src StructMapperSource, optMod ...MappingOption) 
 	}
 
 	return mod
+}
+
+func CustomStructMapperColumns[T any](src StructMapperSource, optMod ...MappingOption) ([]string, error) {
+	opts := mappingOptions{}
+	for _, o := range optMod {
+		o(&opts)
+	}
+
+	if len(opts.mapperMods) > 0 {
+		return nil, fmt.Errorf("Mapper mods are not supported in CustomStructMapperColumns")
+	}
+
+	typ := typeOf[T]()
+
+	_, err := checks(typ)
+	if err != nil {
+		return nil, err
+	}
+
+	mapping, err := src.getMapping(typ)
+	if err != nil {
+		return nil, err
+	}
+
+	return mapping.cols(), nil
 }
 
 func structMapperFrom[T any](ctx context.Context, c cols, s StructMapperSource, opts mappingOptions) (func(*Row) (any, error), func(any) (T, error)) {
