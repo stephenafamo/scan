@@ -136,7 +136,7 @@ type BeforeFunc = func(*Row) (link any, err error)
 
 A mapper returns 2 functions
 
-- **before**: This is called before scanning the row. The mapper should schedule scans using the `ScheduleScan` or `ScheduleScanx` methods of the `Row`. The return value of the **before** function is passed to the **after** function after scanning values from the database.
+- **before**: This is called before scanning the row. The mapper should schedule scans using one of the the `ScheduleScan` methods of the `Row`. The return value of the **before** function is passed to the **after** function after scanning values from the database.
 - **after**: This is called after the scan operation. The mapper should then covert the link value back to the desired concrete type.
 
 There are some builtin mappers for common cases:

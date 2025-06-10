@@ -51,8 +51,11 @@ func (m mapping) cols() []string {
 type Mapper[T any] func(context.Context, cols) (before BeforeFunc, after func(any) (T, error))
 
 // BeforeFunc is returned by a mapper and is called before a row is scanned
-// Scans should be scheduled with either
-// the [*Row.ScheduleScan] or [*Row.ScheduleScanx] methods
+// Scans should be scheduled with any of the following methods:
+// - [*Row.ScheduleScanByName]
+// - [*Row.ScheduleScanByNameX]
+// - [*Row.ScheduleScanByIndex]
+// - [*Row.ScheduleScanByIndexX]
 type BeforeFunc = func(*Row) (link any, err error)
 
 // The generator function does not return an error itself to make it less cumbersome
@@ -108,7 +111,7 @@ func SingleColumnMapper[T any](ctx context.Context, c cols) (before func(*Row) (
 
 	return func(v *Row) (any, error) {
 			var t T
-			v.ScheduleScan(c[0], &t)
+			v.ScheduleScanByIndex(0, &t)
 			return &t, nil
 		}, func(v any) (T, error) {
 			return *(v.(*T)), nil
@@ -120,7 +123,7 @@ func ColumnMapper[T any](name string) func(ctx context.Context, c cols) (before 
 	return func(ctx context.Context, c cols) (before func(*Row) (any, error), after func(any) (T, error)) {
 		return func(v *Row) (any, error) {
 				var t T
-				v.ScheduleScan(name, &t)
+				v.ScheduleScanByName(name, &t)
 				return &t, nil
 			}, func(v any) (T, error) {
 				return *(v.(*T)), nil
@@ -133,8 +136,8 @@ func SliceMapper[T any](ctx context.Context, c cols) (before func(*Row) (any, er
 	return func(v *Row) (any, error) {
 			row := make([]T, len(c))
 
-			for index, name := range c {
-				v.ScheduleScan(name, &row[index])
+			for index := range c {
+				v.ScheduleScanByIndex(index, &row[index])
 			}
 
 			return row, nil
@@ -149,9 +152,9 @@ func MapMapper[T any](ctx context.Context, c cols) (before func(*Row) (any, erro
 	return func(v *Row) (any, error) {
 			row := make([]*T, len(c))
 
-			for index, name := range c {
+			for index := range c {
 				var t T
-				v.ScheduleScan(name, &t)
+				v.ScheduleScanByIndex(index, &t)
 				row[index] = &t
 			}
 
@@ -165,43 +168,4 @@ func MapMapper[T any](ctx context.Context, c cols) (before func(*Row) (any, erro
 
 			return row, nil
 		}
-}
-
-type mappedReturn[T1, T2 any] struct {
-	T1 T1
-	T2 T2
-}
-
-// To run two mappers in sequence
-func MergeMapper[T1, T2 any](m1 Mapper[T1], m2 Mapper[T2]) Mapper[mappedReturn[T1, T2]] {
-	return func(ctx context.Context, c cols) (before func(*Row) (any, error), after func(any) (mappedReturn[T1, T2], error),
-	) {
-		before1, after1 := m1(ctx, c)
-		before2, after2 := m2(ctx, c)
-		return func(v *Row) (any, error) {
-				t1, err := before1(v)
-				if err != nil {
-					return nil, err
-				}
-
-				t2, err := before2(v)
-				if err != nil {
-					return nil, err
-				}
-
-				return [2]any{t1, t2}, nil
-			}, func(v any) (mr mappedReturn[T1, T2], err error) {
-				mr.T1, err = after1(v.([2]any)[0])
-				if err != nil {
-					return mr, err
-				}
-
-				mr.T2, err = after2(v.([2]any)[1])
-				if err != nil {
-					return mr, err
-				}
-
-				return mr, nil
-			}
-	}
 }

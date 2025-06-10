@@ -23,7 +23,11 @@ func wrapRows(r Rows, allowUnknown bool) (*Row, error) {
 
 // Row represents a single row from the query and is passed to the [BeforeFunc]
 // when sent to a mapper's before function, scans should be scheduled
-// with either the [ScheduleScan] or [ScheduleScanx] methods
+// with any of the following ScheduleScan methods
+// - [*Row.ScheduleScanByName]
+// - [*Row.ScheduleScanByNameX]
+// - [*Row.ScheduleScanByIndex]
+// - [*Row.ScheduleScanByIndexX]
 type Row struct {
 	r                   Rows
 	columns             []string
@@ -32,15 +36,15 @@ type Row struct {
 	allowUnknown        bool
 }
 
-// ScheduleScan schedules a scan for the column name into the given value
+// ScheduleScanByName schedules a scan for the column name into the given value
 // val should be a pointer
-func (r *Row) ScheduleScan(colName string, val any) {
-	r.ScheduleScanx(colName, reflect.ValueOf(val))
+func (r *Row) ScheduleScanByName(colName string, val any) {
+	r.ScheduleScanByNameX(colName, reflect.ValueOf(val))
 }
 
-// ScheduleScanx schedules a scan for the column name into the given reflect.Value
+// ScheduleScanByNameX schedules a scan for the column name into the given reflect.Value
 // val.Kind() should be reflect.Pointer
-func (r *Row) ScheduleScanx(colName string, val reflect.Value) {
+func (r *Row) ScheduleScanByNameX(colName string, val reflect.Value) {
 	for i, n := range r.columns {
 		if n == colName {
 			r.scanDestinations[i] = val
@@ -49,6 +53,18 @@ func (r *Row) ScheduleScanx(colName string, val reflect.Value) {
 	}
 
 	r.unknownDestinations = append(r.unknownDestinations, colName)
+}
+
+// ScheduleScanByIndex schedules a scan for the column number into the given value
+// val should be a pointer
+func (r *Row) ScheduleScanByIndex(colIndex int, val any) {
+	r.scanDestinations[colIndex] = reflect.ValueOf(val)
+}
+
+// ScheduleScanByIndex schedules a scan for the column number into the given reflect.Value
+// val should be a pointer
+func (r *Row) ScheduleScanByIndexX(colIndex int, val reflect.Value) {
+	r.scanDestinations[colIndex] = val
 }
 
 // To get a copy of the columns to pass to mapper generators
