@@ -90,14 +90,14 @@ func (r *Row) createTargets() ([]any, error) {
 		}
 
 		if !r.allowUnknown {
-			err := fmt.Errorf("No destination for column %s", name)
+			err := fmt.Errorf("no destination for column %s", name)
 			return nil, createError(err, "no destination", name)
 		}
 
-		// See https://github.com/golang/go/issues/41607:
+		// See https://github.com/golang/go/issues/41607
 		// Some drivers cannot work with nil values, so valid pointers should be
 		// used for all column targets, even if they are discarded afterwards.
-		targets[i] = new(interface{})
+		targets[i] = new(any)
 	}
 
 	return targets, nil

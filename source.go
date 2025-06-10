@@ -1,7 +1,6 @@
 package scan
 
 import (
-	"context"
 	"database/sql"
 	"fmt"
 	"reflect"
@@ -158,7 +157,7 @@ func (s *mapperSourceImpl) setMappings(typ reflect.Type, prefix string, v visite
 	// If it implements a scannable type, then it can be used
 	// as a value itself. Return it
 	for _, scannable := range s.scannableTypes {
-		if reflect.PtrTo(typ).Implements(scannable) {
+		if reflect.PointerTo(typ).Implements(scannable) {
 			*m = append(*m, mapinfo{
 				name:      prefix,
 				position:  position,
@@ -238,7 +237,7 @@ func (s *mapperSourceImpl) setMappings(typ reflect.Type, prefix string, v visite
 	}
 }
 
-func filterColumns(ctx context.Context, c cols, m mapping, prefix string) (mapping, error) {
+func filterColumns(c cols, m mapping, prefix string) (mapping, error) {
 	// Filter the mapping so we only ask for the available columns
 	filtered := make(mapping, 0, len(c))
 	for _, name := range c {

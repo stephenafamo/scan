@@ -102,7 +102,7 @@ func (m *MappingError) Error() string {
 // throws an error if there is more than one column
 func SingleColumnMapper[T any](ctx context.Context, c cols) (before func(*Row) (any, error), after func(any) (T, error)) {
 	if len(c) != 1 {
-		err := fmt.Errorf("Expected 1 column but got %d columns", len(c))
+		err := fmt.Errorf("expected 1 column but got %d columns", len(c))
 		return ErrorMapper[T](err, "wrong column count", "1", strconv.Itoa(len(c)))
 	}
 
@@ -165,4 +165,43 @@ func MapMapper[T any](ctx context.Context, c cols) (before func(*Row) (any, erro
 
 			return row, nil
 		}
+}
+
+type mappedReturn[T1, T2 any] struct {
+	T1 T1
+	T2 T2
+}
+
+// To run two mappers in sequence
+func MergeMapper[T1, T2 any](m1 Mapper[T1], m2 Mapper[T2]) Mapper[mappedReturn[T1, T2]] {
+	return func(ctx context.Context, c cols) (before func(*Row) (any, error), after func(any) (mappedReturn[T1, T2], error),
+	) {
+		before1, after1 := m1(ctx, c)
+		before2, after2 := m2(ctx, c)
+		return func(v *Row) (any, error) {
+				t1, err := before1(v)
+				if err != nil {
+					return nil, err
+				}
+
+				t2, err := before2(v)
+				if err != nil {
+					return nil, err
+				}
+
+				return [2]any{t1, t2}, nil
+			}, func(v any) (mr mappedReturn[T1, T2], err error) {
+				mr.T1, err = after1(v.([2]any)[0])
+				if err != nil {
+					return mr, err
+				}
+
+				mr.T2, err = after2(v.([2]any)[1])
+				if err != nil {
+					return mr, err
+				}
+
+				return mr, nil
+			}
+	}
 }

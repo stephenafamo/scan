@@ -221,7 +221,7 @@ func nonMappingErrors(x, y error) bool {
 	var me *MappingError
 	ok1 := errors.As(x, &me)
 	ok2 := errors.As(y, &me)
-	return !(ok1 && ok2)
+	return !ok1 || !ok2
 }
 
 func compareErrors(xe, ye error) bool {

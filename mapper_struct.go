@@ -82,7 +82,7 @@ func structMapperFrom[T any](ctx context.Context, c cols, s StructMapperSource, 
 // Check if there are any errors, and returns if it is a pointer or not
 func checks(typ reflect.Type) (bool, error) {
 	if typ == nil {
-		return false, fmt.Errorf("Nil type passed to StructMapper")
+		return false, fmt.Errorf("nil type passed to StructMapper")
 	}
 
 	var isPointer bool
@@ -93,10 +93,10 @@ func checks(typ reflect.Type) (bool, error) {
 		isPointer = true
 
 		if typ.Elem().Kind() != reflect.Struct {
-			return false, fmt.Errorf("Type %q is not a struct or pointer to a struct", typ.String())
+			return false, fmt.Errorf("type %q is not a struct or pointer to a struct", typ.String())
 		}
 	default:
-		return false, fmt.Errorf("Type %q is not a struct or pointer to a struct", typ.String())
+		return false, fmt.Errorf("type %q is not a struct or pointer to a struct", typ.String())
 	}
 
 	return isPointer, nil
@@ -146,7 +146,7 @@ func WithMapperMods(mods ...MapperMod) MappingOption {
 func mapperFromMapping[T any](m mapping, typ reflect.Type, isPointer bool, opts mappingOptions) func(context.Context, cols) (func(*Row) (any, error), func(any) (T, error)) {
 	return func(ctx context.Context, c cols) (func(*Row) (any, error), func(any) (T, error)) {
 		// Filter the mapping so we only ask for the available columns
-		filtered, err := filterColumns(ctx, c, m, opts.structTagPrefix)
+		filtered, err := filterColumns(c, m, opts.structTagPrefix)
 		if err != nil {
 			return ErrorMapper[T](err)
 		}
