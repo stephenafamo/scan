@@ -202,25 +202,27 @@ func (s *mapperSourceImpl) setMappings(typ reflect.Type, prefix string, v visite
 			key = strings.Join([]string{key, name}, sep)
 		}
 
-		currentIndex := append(position, i)
+		// Keep each child's paths independent of later sibling appends.
+		currentIndex := append(position[:len(position):len(position)], i)
+		childInits := inits
 		fieldType := field.Type
 		var isPointer bool
 
 		if fieldType.Kind() == reflect.Pointer {
-			inits = append(inits, currentIndex)
+			childInits = append(inits[:len(inits):len(inits)], currentIndex)
 			fieldType = fieldType.Elem()
 			isPointer = true
 		}
 
 		if fieldType.Kind() == reflect.Struct {
-			s.setMappings(field.Type, key, v.copy(), m, inits, currentIndex...)
+			s.setMappings(field.Type, key, v.copy(), m, childInits, currentIndex...)
 			continue
 		}
 
 		*m = append(*m, mapinfo{
 			name:      key,
 			position:  currentIndex,
-			init:      inits,
+			init:      childInits,
 			isPointer: isPointer,
 		})
 	}

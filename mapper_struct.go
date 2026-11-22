@@ -21,6 +21,18 @@ func StructMapperColumns[T any](opts ...MappingOption) ([]string, error) {
 	return CustomStructMapperColumns[T](defaultStructMapper, opts...)
 }
 
+// MappedField describes a column in a struct mapping.
+type MappedField struct {
+	Name  string // Resolved scan column name.
+	Index []int  // FieldByIndex path from the root struct; empty for the root itself.
+}
+
+// StructMapperFields returns a snapshot of the default mapping for a struct or
+// pointer to a struct, in the same order as StructMapperColumns.
+func StructMapperFields(t reflect.Type) ([]MappedField, error) {
+	return CustomStructMapperFields(defaultStructMapper, t)
+}
+
 // Uses reflection to create a mapping function for a struct type
 // using with custom options
 func CustomStructMapper[T any](src StructMapperSource, optMod ...MappingOption) Mapper[T] {
@@ -63,6 +75,23 @@ func CustomStructMapperColumns[T any](src StructMapperSource, optMod ...MappingO
 	}
 
 	return mapping.cols(), nil
+}
+
+// CustomStructMapperFields is like StructMapperFields but uses src's mapping rules.
+func CustomStructMapperFields(src StructMapperSource, t reflect.Type) ([]MappedField, error) {
+	if _, err := checks(t); err != nil {
+		return nil, err
+	}
+	m, err := src.getMapping(t)
+	if err != nil {
+		return nil, err
+	}
+
+	fields := make([]MappedField, len(m))
+	for i, info := range m {
+		fields[i] = MappedField{Name: info.name, Index: append([]int(nil), info.position...)}
+	}
+	return fields, nil
 }
 
 func structMapperFrom[T any](ctx context.Context, c cols, s StructMapperSource, opts mappingOptions) (func(*Row) (any, error), func(any) (T, error)) {
@@ -147,7 +176,12 @@ func WithMapperMods(mods ...MapperMod) MappingOption {
 	}
 }
 
-func mapperFromMapping[T any](m mapping, typ reflect.Type, isPointer bool, opts mappingOptions) func(context.Context, cols) (func(*Row) (any, error), func(any) (T, error)) {
+func mapperFromMapping[T any](
+	m mapping,
+	typ reflect.Type,
+	isPointer bool,
+	opts mappingOptions,
+) func(context.Context, cols) (func(*Row) (any, error), func(any) (T, error)) {
 	return func(ctx context.Context, c cols) (func(*Row) (any, error), func(any) (T, error)) {
 		// Filter the mapping so we only ask for the available columns
 		filtered, err := filterColumns(c, m, opts.structTagPrefix)

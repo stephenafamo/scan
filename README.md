@@ -202,6 +202,32 @@ type User struct {
 users, _ := stdscan.All(ctx, db, scan.StructMapper[User](), `SELECT id, name, email, age FROM users`)
 ```
 
+Use `StructMapperFields` to inspect the column names and their Go fields. Embedded
+structs keep their full index paths even when the mapper flattens their names:
+
+```go
+type UserFields struct {
+    ID int `db:"id,pk"`
+}
+type Article struct {
+    UserFields
+    Author UserFields
+}
+
+root := reflect.TypeOf(Article{})
+fields, err := scan.StructMapperFields(root)
+if err != nil {
+    return err
+}
+for _, field := range fields {
+    fmt.Println(field.Name, field.Index, root.FieldByIndex(field.Index).Tag.Get("db"))
+}
+// id [0 0] id,pk
+// author.id [1 0] id,pk
+```
+
+Use `CustomStructMapperFields(src, root)` to inspect a custom mapper source.
+
 The default behaviour of `StructMapper` is often good enough. For more advanced use cases, some options can be passed to the StructMapper.
 
 - **WithStructTagPrefix**: Use this when every column from the database has a prefix.

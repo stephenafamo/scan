@@ -468,6 +468,80 @@ func TestStructMapper(t *testing.T) {
 	})
 }
 
+func TestStructMapperDeepSiblings(t *testing.T) {
+	type Pair struct{ A, B *int }
+	type Inner struct{ *Pair }
+	type Outer struct{ *Inner }
+	type Root struct{ *Outer }
+
+	for column, want := range map[string]Pair{
+		"a": {A: toPtr(1)},
+		"b": {B: toPtr(1)},
+	} {
+		RunMapperTest(t, column, MapperTest[Root]{
+			row:         &Row{columns: columnNames(column)},
+			scanned:     []any{toPtr(1)},
+			Mapper:      StructMapper[Root](),
+			ExpectedVal: Root{&Outer{&Inner{&want}}},
+		})
+	}
+}
+
+func TestStructMapperFields(t *testing.T) {
+	type UserFields struct {
+		ID      int `db:"id,pk" custom:"user_id"`
+		Ignored int `db:"-"     custom:"-"`
+	}
+	type Record struct {
+		*UserFields
+		Author UserFields
+	}
+	root := reflect.TypeOf(Record{})
+	want := []MappedField{
+		{Name: "id", Index: []int{0, 0}},
+		{Name: "author.id", Index: []int{1, 0}},
+	}
+	got, err := StructMapperFields(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Fatalf("mapped fields (-want +got):\n%s", diff)
+	}
+
+	got[0].Name = "changed"
+	got[0].Index[1] = 1
+	again, err := StructMapperFields(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if diff := cmp.Diff(want, again); diff != "" {
+		t.Fatalf("cached mapping changed (-want +got):\n%s", diff)
+	}
+
+	src, err := NewStructMapperSource(WithStructTagKey("custom"), WithColumnSeparator("/"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err = CustomStructMapperFields(src, reflect.PointerTo(root))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want[0].Name = "user_id"
+	want[1].Name = "author/user_id"
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Fatalf("custom mapped fields (-want +got):\n%s", diff)
+	}
+}
+
+func TestStructMapperFieldsInvalidType(t *testing.T) {
+	for _, typ := range []reflect.Type{nil, reflect.TypeOf(1), reflect.TypeOf((**User)(nil))} {
+		if _, err := StructMapperFields(typ); err == nil {
+			t.Errorf("StructMapperFields(%v) returned no error", typ)
+		}
+	}
+}
+
 func TestScannable(t *testing.T) {
 	type scannable interface {
 		Scan()
